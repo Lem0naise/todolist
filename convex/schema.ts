@@ -54,6 +54,12 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_user_event_date", ["userId", "eventId", "date"]),
 
+  // Titles of events to hide and never generate todos for
+  ignoredEventTitles: defineTable({
+    userId: v.id("users"),
+    title: v.string(),
+  }).index("by_user", ["userId"]),
+
   // Todos (manually created or auto-generated from missed events)
   todos: defineTable({
     userId: v.id("users"),

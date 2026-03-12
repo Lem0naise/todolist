@@ -115,6 +115,13 @@ export const processMissedEvents = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
+    // Build ignored-titles set (case-insensitive)
+    const ignoredItems = await ctx.db
+      .query("ignoredEventTitles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    const ignoredSet = new Set(ignoredItems.map((i) => i.title.toLowerCase()));
+
     // Get all timetable events for this user
     const events = await ctx.db
       .query("timetableEvents")
@@ -126,6 +133,9 @@ export const processMissedEvents = mutation({
     const createdTodos = [];
 
     for (const event of events) {
+      // Skip ignored events
+      if (ignoredSet.has(event.title.toLowerCase())) continue;
+
       if (event.isRecurring && event.dayOfWeek !== undefined) {
         // Generate dates for the past 14 days where this event should have occurred
         for (let i = 1; i <= 14; i++) {

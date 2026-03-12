@@ -22,12 +22,20 @@ export const getForDate = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
+    // Build a set of ignored titles (case-insensitive)
+    const ignoredItems = await ctx.db
+      .query("ignoredEventTitles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    const ignoredSet = new Set(ignoredItems.map((i) => i.title.toLowerCase()));
+
     const allEvents = await ctx.db
       .query("timetableEvents")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     const todayEvents = allEvents.filter((event) => {
+      if (ignoredSet.has(event.title.toLowerCase())) return false;
       if (event.isRecurring) {
         return (
           event.dayOfWeek === dayOfWeek &&
@@ -51,10 +59,30 @@ export const getForDate = query({
       )
       .collect();
 
-    return todayEvents.map((event) => ({
-      ...event,
-      occurrence: occurrences.find((o) => o.eventId === event._id) ?? null,
-    }));
+    // Enrich each event: include occurrence + linked todo data when status is "todo"
+    return await Promise.all(
+      todayEvents.map(async (event) => {
+        const occ = occurrences.find((o) => o.eventId === event._id) ?? null;
+        if (!occ) return { ...event, occurrence: null };
+
+        let linkedTodo = undefined;
+        if (occ.status === "todo" && occ.todoId) {
+          const todo = await ctx.db.get(occ.todoId);
+          if (todo) {
+            linkedTodo = {
+              _id: todo._id,
+              title: todo.title,
+              description: todo.description,
+              dueDate: todo.dueDate,
+              highPriority: todo.highPriority,
+              completed: todo.completed,
+            };
+          }
+        }
+
+        return { ...event, occurrence: { ...occ, linkedTodo } };
+      })
+    );
   },
 });
 

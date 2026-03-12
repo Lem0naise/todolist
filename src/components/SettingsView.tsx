@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type Feed = {
@@ -58,6 +57,12 @@ function TimetableSettings() {
   const removeFeed = useMutation(api.timetable.removeFeed);
   const removeByFeed = useMutation(api.timetable.removeByFeed);
   const removeEvent = useMutation(api.timetable.remove);
+
+  const ignoredTitles = useQuery(api.ignored.list);
+  const addIgnored = useMutation(api.ignored.add);
+  const removeIgnored = useMutation(api.ignored.remove);
+  const [newIgnoredTitle, setNewIgnoredTitle] = useState("");
+  const [addingIgnored, setAddingIgnored] = useState(false);
 
   const handleDeleteFeed = async (feed: Feed) => {
     if (!confirm(`Delete "${feed.name}" and all its events?`)) return;
@@ -157,6 +162,71 @@ function TimetableSettings() {
                 </div>
                 <button
                   onClick={() => removeEvent({ id: event._id })}
+                  className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Ignored event titles */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Ignored event titles</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Events matching these titles are hidden everywhere and won't generate todos</p>
+          </div>
+        </div>
+
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newIgnoredTitle.trim()) return;
+            setAddingIgnored(true);
+            try {
+              await addIgnored({ title: newIgnoredTitle.trim() });
+              setNewIgnoredTitle("");
+            } finally {
+              setAddingIgnored(false);
+            }
+          }}
+          className="flex gap-2 mb-3"
+        >
+          <input
+            type="text"
+            value={newIgnoredTitle}
+            onChange={(e) => setNewIgnoredTitle(e.target.value)}
+            placeholder="e.g. Break"
+            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={addingIgnored || !newIgnoredTitle.trim()}
+            className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg transition-colors"
+          >
+            Add
+          </button>
+        </form>
+
+        {ignoredTitles == null ? (
+          <div className="text-sm text-slate-400">Loading...</div>
+        ) : ignoredTitles.length === 0 ? (
+          <p className="text-sm text-slate-400">No ignored titles yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {ignoredTitles.map((item) => (
+              <div
+                key={item._id}
+                className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+              >
+                <span className="text-sm text-slate-700">{item.title}</span>
+                <button
+                  onClick={() => removeIgnored({ id: item._id })}
                   className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

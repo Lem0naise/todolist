@@ -12,6 +12,7 @@ type Tab = "today" | "todos" | "settings";
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("today");
+  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
 
   // Get todo count for badge
@@ -20,6 +21,11 @@ function MainApp() {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleNavigateToDate = (date: string) => {
+    setNavigateToDate(date);
+    setActiveTab("today");
   };
 
   return (
@@ -33,9 +39,14 @@ function MainApp() {
       {/* Content area — offset for sidebar on desktop, extra bottom padding on mobile for nav */}
       <div className="sm:pl-14 pb-20 sm:pb-0">
         {activeTab === "today" && (
-          <TodayView onGoToTodos={() => setActiveTab("todos")} />
+          <TodayView
+            onGoToTodos={() => setActiveTab("todos")}
+            initialDate={navigateToDate}
+          />
         )}
-        {activeTab === "todos" && <TodosView />}
+        {activeTab === "todos" && (
+          <TodosView onNavigateToDate={handleNavigateToDate} />
+        )}
         {activeTab === "settings" && (
           <SettingsView onSignOut={handleSignOut} />
         )}

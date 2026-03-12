@@ -15,6 +15,8 @@ type Todo = {
   completedAt?: number;
   createdAt: number;
   sourceOccurrenceId?: Id<"occurrences">;
+  /** Date of the linked timetable occurrence (YYYY-MM-DD), used for navigation */
+  sourceOccurrenceDate?: string;
 };
 
 function formatDue(dateStr: string): { text: string; overdue: boolean; today: boolean } {
@@ -35,7 +37,7 @@ function formatDue(dateStr: string): { text: string; overdue: boolean; today: bo
   };
 }
 
-export function TodosView() {
+export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: string) => void }) {
   const [showModal, setShowModal] = useState(false);
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -112,6 +114,7 @@ export function TodosView() {
               onToggleDone={() => handleToggle(todo._id, todo.completed)}
               onEdit={() => { setEditTodo(todo); setShowModal(true); }}
               onDelete={() => handleDelete(todo._id)}
+              onNavigateToDate={onNavigateToDate}
             />
           ))}
 
@@ -138,6 +141,7 @@ export function TodosView() {
                       onToggleDone={() => handleToggle(todo._id, todo.completed)}
                       onEdit={() => { setEditTodo(todo); setShowModal(true); }}
                       onDelete={() => handleDelete(todo._id)}
+                      onNavigateToDate={onNavigateToDate}
                     />
                   ))}
                 </div>
@@ -164,6 +168,7 @@ function TodoItem({
   onToggleDone,
   onEdit,
   onDelete,
+  onNavigateToDate,
 }: {
   todo: Todo;
   expanded: boolean;
@@ -171,6 +176,7 @@ function TodoItem({
   onToggleDone: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onNavigateToDate?: (date: string) => void;
 }) {
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
   const hasDetails = !!(todo.description);
@@ -210,7 +216,17 @@ function TodoItem({
               <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded font-medium">High</span>
             )}
             {todo.sourceOccurrenceId && (
-              <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded">class</span>
+              todo.sourceOccurrenceDate && onNavigateToDate ? (
+                <button
+                  onClick={() => onNavigateToDate(todo.sourceOccurrenceDate!)}
+                  className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition-colors"
+                  title={`Go to ${todo.sourceOccurrenceDate}`}
+                >
+                  class
+                </button>
+              ) : (
+                <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded">class</span>
+              )
             )}
           </div>
 

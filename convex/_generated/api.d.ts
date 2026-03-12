@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as icsImport from "../icsImport.js";
 import type * as icsImportInternal from "../icsImportInternal.js";
+import type * as ignored from "../ignored.js";
 import type * as occurrences from "../occurrences.js";
 import type * as timetable from "../timetable.js";
 import type * as todos from "../todos.js";
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   icsImport: typeof icsImport;
   icsImportInternal: typeof icsImportInternal;
+  ignored: typeof ignored;
   occurrences: typeof occurrences;
   timetable: typeof timetable;
   todos: typeof todos;

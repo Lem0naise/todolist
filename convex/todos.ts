@@ -17,13 +17,24 @@ export const list = query({
       : todos.filter((t) => !t.completed);
 
     // Sort: high priority first, then by due date (earliest first), then by creation date
-    return filtered.sort((a, b) => {
+    const sorted = filtered.sort((a, b) => {
       if (a.highPriority !== b.highPriority) return a.highPriority ? -1 : 1;
       if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
       if (a.dueDate && !b.dueDate) return -1;
       if (!a.dueDate && b.dueDate) return 1;
       return a.createdAt - b.createdAt;
     });
+
+    // Join with occurrence to expose the linked lecture's date to the UI
+    return await Promise.all(
+      sorted.map(async (todo) => {
+        if (!todo.sourceOccurrenceId) {
+          return { ...todo, sourceOccurrenceDate: undefined as string | undefined };
+        }
+        const occ = await ctx.db.get(todo.sourceOccurrenceId);
+        return { ...todo, sourceOccurrenceDate: occ?.date as string | undefined };
+      })
+    );
   },
 });
 
