@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useLocalCache } from "../hooks/useLocalCache";
@@ -19,22 +19,74 @@ type Todo = {
   sourceOccurrenceDate?: string;
 };
 
+function formatShortDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function formatDue(dateStr: string): { text: string; overdue: boolean; today: boolean } {
   const today = new Date().toISOString().split("T")[0];
   const diff = Math.floor(
     (new Date(dateStr).getTime() - new Date(today).getTime()) / 86400000
   );
+  const shortDate = formatShortDate(dateStr);
+
   if (dateStr === today) return { text: "Today", overdue: false, today: true };
   if (diff === 1) return { text: "Tomorrow", overdue: false, today: false };
-  if (diff === -1) return { text: "Yesterday", overdue: true, today: false };
-  if (diff < 0) return { text: `${Math.abs(diff)}d overdue`, overdue: true, today: false };
+  if (diff === -1) return { text: `Yesterday • due ${shortDate}`, overdue: true, today: false };
+  if (diff < 0) {
+    return { text: `${Math.abs(diff)}d overdue • due ${shortDate}`, overdue: true, today: false };
+  }
   if (diff <= 7) return { text: `In ${diff}d`, overdue: false, today: false };
-  const d = new Date(dateStr);
   return {
-    text: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    text: shortDate,
     overdue: false,
     today: false,
   };
+}
+
+function renderLinkedText(text: string): ReactNode[] {
+  const urlRegex = /((?:https?:\/\/|www\.)\S+)/gi;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(urlRegex)) {
+    const rawMatch = match[0];
+    const matchIndex = match.index ?? 0;
+    const trimmedMatch = rawMatch.replace(/[),.!?]+$/, "");
+    const trailingText = rawMatch.slice(trimmedMatch.length);
+
+    if (matchIndex > lastIndex) {
+      parts.push(text.slice(lastIndex, matchIndex));
+    }
+
+    const href = trimmedMatch.startsWith("www.") ? `https://${trimmedMatch}` : trimmedMatch;
+    parts.push(
+      <a
+        key={`${trimmedMatch}-${matchIndex}`}
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="text-blue-600 underline underline-offset-2 hover:text-blue-700"
+      >
+        {trimmedMatch}
+      </a>
+    );
+
+    if (trailingText) {
+      parts.push(trailingText);
+    }
+
+    lastIndex = matchIndex + rawMatch.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
 }
 
 export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: string) => void }) {
@@ -237,6 +289,7 @@ function TodoItem({
               }`}>
                 {due.text}
               </span>
+              
             )}
             {hasDetails && (
               <button
@@ -250,7 +303,7 @@ function TodoItem({
 
           {expanded && todo.description && (
             <div className="mt-2 text-xs text-slate-600 bg-white rounded-lg p-2 border border-slate-100 whitespace-pre-wrap break-words">
-              {todo.description}
+              {renderLinkedText(todo.description)}
             </div>
           )}
         </div>
