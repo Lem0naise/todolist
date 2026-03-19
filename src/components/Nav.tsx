@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Tab = "today" | "todos" | "settings";
+export type Tab = "dashboard" | "today" | "todos" | "settings";
 
 interface Props {
   activeTab: Tab;
@@ -11,8 +11,17 @@ interface Props {
 export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
     {
+      id: "dashboard",
+      label: "Dashboard",
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      ),
+    },
+    {
       id: "today",
-      label: "Today",
+      label: "Schedule",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -42,25 +51,33 @@ export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <nav className="hidden sm:flex flex-col w-14 border-r border-slate-200 bg-white pt-4 gap-1 items-center fixed left-0 top-0 bottom-0 z-30">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mb-4">
-          <span className="text-white text-xs font-bold">U</span>
+      {/* Desktop sidebar — icon-only on sm, icon+label on lg */}
+      <nav className="hidden sm:flex flex-col border-r border-slate-200 bg-white pt-4 gap-1 fixed left-0 top-0 bottom-0 z-30 w-14 lg:w-52 transition-all duration-200">
+        {/* Logo / wordmark */}
+        <div className="flex items-center gap-2.5 px-3 mb-4">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+            <span className="text-white text-xs font-bold">U</span>
+          </div>
+          <span className="hidden lg:block text-sm font-bold text-slate-800 truncate">UniTrack</span>
         </div>
+
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             title={tab.label}
-            className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+            className={`relative mx-2 rounded-xl flex items-center gap-3 px-2 py-2.5 transition-all ${
               activeTab === tab.id
                 ? "bg-blue-50 text-blue-600"
                 : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
             }`}
           >
-            {tab.icon}
+            <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">{tab.icon}</span>
+            <span className={`hidden lg:block text-sm font-medium whitespace-nowrap ${activeTab === tab.id ? "text-blue-600" : ""}`}>
+              {tab.label}
+            </span>
             {tab.id === "todos" && todoBadge !== undefined && todoBadge > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute top-1 right-1 lg:static lg:ml-auto w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {todoBadge > 9 ? "9+" : todoBadge}
               </span>
             )}

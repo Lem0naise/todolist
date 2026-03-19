@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as dailyNotes from "../dailyNotes.js";
 import type * as http from "../http.js";
 import type * as icsImport from "../icsImport.js";
 import type * as icsImportInternal from "../icsImportInternal.js";
@@ -25,6 +26,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  dailyNotes: typeof dailyNotes;
   http: typeof http;
   icsImport: typeof icsImport;
   icsImportInternal: typeof icsImportInternal;

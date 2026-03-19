@@ -74,4 +74,16 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_completed", ["userId", "completed"]),
+
+  // Personal daily notes — lightweight scratch pad for "what I want to do today"
+  dailyNotes: defineTable({
+    userId: v.id("users"),
+    date: v.string(),              // YYYY-MM-DD
+    text: v.string(),
+    targetTime: v.optional(v.string()), // "HH:MM"
+    completed: v.boolean(),
+    order: v.number(),             // insertion order
+    createdAt: v.number(),
+  })
+    .index("by_user_date", ["userId", "date"]),
 });

@@ -4,14 +4,14 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import { Auth } from "./components/Auth";
 import { Nav } from "./components/Nav";
+import type { Tab } from "./components/Nav";
+import { DashboardView } from "./components/DashboardView";
 import { TodayView } from "./components/TodayView";
 import { TodosView } from "./components/TodosView";
 import { SettingsView } from "./components/SettingsView";
 
-type Tab = "today" | "todos" | "settings";
-
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<Tab>("today");
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
 
@@ -36,8 +36,17 @@ function MainApp() {
         todoBadge={todoBadge}
       />
 
-      {/* Content area — offset for sidebar on desktop, extra bottom padding on mobile for nav */}
-      <div className="sm:pl-14 pb-20 sm:pb-0">
+      {/* Content area —
+          sm+: offset by icon-only sidebar (w-14)
+          lg+: offset by wide sidebar (w-52)
+          mobile: extra bottom padding for bottom nav */}
+      <div className="sm:pl-14 lg:pl-52 pb-20 sm:pb-0">
+        {activeTab === "dashboard" && (
+          <DashboardView
+            onGoToTodos={() => setActiveTab("todos")}
+            onGoToSchedule={() => setActiveTab("today")}
+          />
+        )}
         {activeTab === "today" && (
           <TodayView
             onGoToTodos={() => setActiveTab("todos")}
