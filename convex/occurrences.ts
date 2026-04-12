@@ -90,15 +90,19 @@ export const convertToTodo = mutation({
       });
     }
 
-    // Create todo
+    // Create todo — clean title, readable date in description
+    const humanDate = new Date(date + "T12:00:00").toLocaleDateString("en-GB", {
+      weekday: "short", day: "numeric", month: "short",
+    });
     const todoId = await ctx.db.insert("todos", {
       userId,
-      title: `${event.title}${event.location ? ` (${event.location})` : ""}`,
-      description: event.description,
+      title: event.title,
+      description: `Missed lecture · ${humanDate}${event.description ? `\n${event.description}` : ""}`,
       dueDate: dueDate ?? date,
       highPriority: highPriority ?? false,
       completed: false,
       sourceOccurrenceId: occurrenceId,
+      category: "lecture_catchup",
       createdAt: Date.now(),
     });
 
@@ -179,20 +183,25 @@ export const processMissedEvents = mutation({
                 highPriority: false,
                 completed: false,
                 sourceOccurrenceId: occId,
+                category: "lecture_catchup",
                 createdAt: Date.now(),
               });
               await ctx.db.patch(occId, { todoId });
               createdTodos.push(todoId);
             } else if (existing.status === "pending") {
               // Update to todo and create todo entry
+              const humanDate2 = new Date(dateStr + "T12:00:00").toLocaleDateString("en-GB", {
+                weekday: "short", day: "numeric", month: "short",
+              });
               const todoId = await ctx.db.insert("todos", {
                 userId,
-                title: `Missed: ${event.title}`,
-                description: event.description,
+                title: event.title,
+                description: `Missed lecture · ${humanDate2}`,
                 dueDate: today,
                 highPriority: false,
                 completed: false,
                 sourceOccurrenceId: existing._id,
+                category: "lecture_catchup",
                 createdAt: Date.now(),
               });
               await ctx.db.patch(existing._id, { status: "todo", todoId });

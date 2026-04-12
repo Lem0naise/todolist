@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useDarkMode } from "../hooks/useDarkMode";
 
 export type Tab = "dashboard" | "today" | "todos" | "settings";
 
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
+  const { dark, toggle: toggleDark } = useDarkMode();
+
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
     {
       id: "dashboard",
@@ -51,49 +54,77 @@ export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
 
   return (
     <>
-      {/* Desktop sidebar — icon-only on sm, icon+label on lg */}
-      <nav className="hidden sm:flex flex-col border-r border-slate-200 bg-white pt-4 gap-1 fixed left-0 top-0 bottom-0 z-30 w-14 lg:w-52 transition-all duration-200">
-        {/* Logo / wordmark */}
-        <div className="flex items-center gap-2.5 px-3 mb-4">
+      {/* Desktop sidebar — icon-only by default, expands to w-52 on hover */}
+      <nav className="group hidden sm:flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pt-4 gap-1 fixed left-0 top-0 bottom-0 z-30 w-14 hover:w-52 transition-all duration-200 overflow-hidden">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-3 mb-4 flex-shrink-0">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-sm">
             <span className="text-white text-xs font-bold">U</span>
           </div>
-          <span className="hidden lg:block text-sm font-bold text-slate-800 truncate">UniTrack</span>
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-sm font-bold text-slate-800 dark:text-slate-100 truncate whitespace-nowrap">
+            UniTrack
+          </span>
         </div>
 
+        {/* Nav items */}
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             title={tab.label}
-            className={`relative mx-2 rounded-xl flex items-center gap-3 px-2 py-2.5 transition-all ${
+            className={`relative mx-2 rounded-xl flex items-center gap-3 px-2 py-2.5 transition-all flex-shrink-0 ${
               activeTab === tab.id
-                ? "bg-blue-50 text-blue-600"
-                : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+                : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}
           >
             <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">{tab.icon}</span>
-            <span className={`hidden lg:block text-sm font-medium whitespace-nowrap ${activeTab === tab.id ? "text-blue-600" : ""}`}>
+            <span className={`opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-sm font-medium whitespace-nowrap ${activeTab === tab.id ? "text-blue-600 dark:text-blue-400" : ""}`}>
               {tab.label}
             </span>
             {tab.id === "todos" && todoBadge !== undefined && todoBadge > 0 && (
-              <span className="absolute top-1 right-1 lg:static lg:ml-auto w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute top-1 right-1 group-hover:static group-hover:ml-auto w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {todoBadge > 9 ? "9+" : todoBadge}
               </span>
             )}
           </button>
         ))}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Dark mode toggle */}
+        <button
+          onClick={toggleDark}
+          title={dark ? "Switch to light mode" : "Switch to dark mode"}
+          className="mx-2 mb-4 rounded-xl flex items-center gap-3 px-2 py-2.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex-shrink-0"
+        >
+          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+            {dark ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </span>
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-sm font-medium whitespace-nowrap">
+            {dark ? "Light mode" : "Dark mode"}
+          </span>
+        </button>
       </nav>
 
       {/* Mobile bottom bar */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200">
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
         <div className="flex">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
               className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${
-                activeTab === tab.id ? "text-blue-600" : "text-slate-400"
+                activeTab === tab.id ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"
               }`}
             >
               <div className="relative">

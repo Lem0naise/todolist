@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useState, useEffect } from "react";
+import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import { Auth } from "./components/Auth";
@@ -18,6 +18,17 @@ function MainApp() {
   // Get todo count for badge
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
+
+  // Process missed lecture events once per day, regardless of active tab
+  const processMissed = useMutation(api.occurrences.processMissedEvents);
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const key = `unitrack:processed:${todayStr}`;
+    if (localStorage.getItem(key)) return;
+    processMissed({ today: todayStr })
+      .then(() => localStorage.setItem(key, "1"))
+      .catch(() => {});
+  }, [processMissed]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -40,7 +51,7 @@ function MainApp() {
           sm+: offset by icon-only sidebar (w-14)
           lg+: offset by wide sidebar (w-52)
           mobile: extra bottom padding for bottom nav */}
-      <div className="sm:pl-14 lg:pl-52 pb-20 sm:pb-0">
+      <div className="sm:pl-14 pb-20 sm:pb-0">
         {activeTab === "dashboard" && (
           <DashboardView
             onGoToTodos={() => setActiveTab("todos")}

@@ -71,6 +71,24 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     sourceOccurrenceId: v.optional(v.id("occurrences")),
     createdAt: v.number(),
+    // Category: undefined / "other" treated the same in UI (backwards compat)
+    category: v.optional(v.union(
+      v.literal("lecture_catchup"),
+      v.literal("project"),
+      v.literal("other"),
+    )),
+    // Project sub-tasks
+    subTasks: v.optional(v.array(v.object({
+      id: v.string(),
+      title: v.string(),
+      done: v.boolean(),
+    }))),
+    // Manual progress override (0-100); used when no subTasks or alongside them
+    manualProgress: v.optional(v.number()),
+    // Link any todo to a specific timetable event (not just catchups)
+    linkedEventId: v.optional(v.id("timetableEvents")),
+    // Manual sort order within each category (set by drag-to-reorder)
+    manualOrder: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_completed", ["userId", "completed"]),

@@ -15,6 +15,25 @@ export const list = query({
   },
 });
 
+/** Returns ALL incomplete notes for the user across all dates.
+ *  Used by the dashboard — notes persist until ticked done. */
+export const listAll = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const notes = await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_user_date", (q) => q.eq("userId", userId))
+      .collect();
+    // Show incomplete first (sorted by createdAt), then completed at the end
+    const incomplete = notes.filter((n) => !n.completed).sort((a, b) => a.createdAt - b.createdAt);
+    const complete = notes.filter((n) => n.completed).sort((a, b) => b.createdAt - a.createdAt);
+    return [...incomplete, ...complete];
+  },
+});
+
+
 export const add = mutation({
   args: {
     date: v.string(),
