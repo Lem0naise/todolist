@@ -60,6 +60,13 @@ export default defineSchema({
     title: v.string(),
   }).index("by_user", ["userId"]),
 
+  // Subject aliases to show short acronyms instead of long event titles
+  subjectAliases: defineTable({
+    userId: v.id("users"),
+    originalTitle: v.string(),
+    alias: v.string(),
+  }).index("by_user", ["userId"]),
+
   // Todos (manually created or auto-generated from missed events)
   todos: defineTable({
     userId: v.id("users"),

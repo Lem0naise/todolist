@@ -239,6 +239,9 @@ function TimetableSettings() {
         )}
       </section>
 
+      {/* Subject Aliases */}
+      <EventAliasesSection />
+
       {/* Tips */}
       <section className="bg-blue-50 rounded-xl p-4 border border-blue-100">
         <h4 className="text-xs font-semibold text-blue-800 mb-2">How to get your iCAL link</h4>
@@ -514,6 +517,115 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
         </button>
       </div>
     </form>
+  );
+}
+
+function EventAliasesSection() {
+  const aliases = useQuery(api.aliases.list);
+  const events = useQuery(api.timetable.list);
+  const addAlias = useMutation(api.aliases.add);
+  const removeAlias = useMutation(api.aliases.remove);
+  const [originalTitle, setOriginalTitle] = useState("");
+  const [alias, setAlias] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  // Get unique event titles that haven't been aliased yet
+  const aliasedTitles = new Set(aliases?.map(a => a.originalTitle) || []);
+  const uniqueTitles = Array.from(new Set(events?.map(e => e.title) || []))
+    .filter(title => !aliasedTitles.has(title))
+    .sort();
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">Subject Aliases</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Shorten long event titles to acronyms (e.g. "COMP1234 - Intro" → "COMP1234")</p>
+        </div>
+      </div>
+
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!originalTitle.trim() || !alias.trim()) return;
+          setAdding(true);
+          try {
+            await addAlias({ originalTitle: originalTitle.trim(), alias: alias.trim() });
+            setOriginalTitle("");
+            setAlias("");
+          } finally {
+            setAdding(false);
+          }
+        }}
+        className="flex gap-2 mb-3"
+      >
+        <div className="flex-1 min-w-0">
+          {uniqueTitles.length > 0 ? (
+            <select
+              value={originalTitle}
+              onChange={(e) => setOriginalTitle(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="" disabled>Select original title...</option>
+              {uniqueTitles.map((title) => (
+                <option key={title} value={title}>{title}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={originalTitle}
+              onChange={(e) => setOriginalTitle(e.target.value)}
+              placeholder="Original title"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
+        </div>
+        <input
+          type="text"
+          value={alias}
+          onChange={(e) => setAlias(e.target.value)}
+          placeholder="Alias"
+          className="w-24 flex-shrink-0 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          type="submit"
+          disabled={adding || !originalTitle.trim() || !alias.trim()}
+          className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg transition-colors flex-shrink-0"
+        >
+          Add
+        </button>
+      </form>
+
+      {aliases == null ? (
+        <div className="text-sm text-slate-400">Loading...</div>
+      ) : aliases.length === 0 ? (
+        <p className="text-sm text-slate-400">No aliases yet.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {aliases.map((item) => (
+            <div
+              key={item._id}
+              className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+            >
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <span className="text-sm text-slate-700 truncate">{item.originalTitle}</span>
+                <span className="text-slate-400 text-sm">→</span>
+                <span className="text-sm font-semibold text-blue-700">{item.alias}</span>
+              </div>
+              <button
+                onClick={() => removeAlias({ id: item._id })}
+                className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

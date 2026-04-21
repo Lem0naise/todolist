@@ -114,6 +114,17 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
   const events = (useLocalCache<TodayEvent[]>(`dash:schedule:${todayStr}`, liveEvents) ?? undefined) as TodayEvent[] | undefined;
   const setStatus = useMutation(api.occurrences.setStatus);
 
+  const aliasesQuery = useQuery(api.aliases.list);
+  const aliases = useLocalCache("aliases", aliasesQuery) || [];
+  const aliasesMap = new Map<string, string>();
+  for (const a of aliases) {
+    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
+  }
+  function applyAlias(title: string): string {
+    const cleanTitle = title.replace(/^Missed:\s*/i, "");
+    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
+  }
+
   const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
   const handleToggle = async (event: TodayEvent) => {
@@ -208,7 +219,7 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
                       isActive ? "text-blue-900 dark:text-blue-100" :
                       "text-slate-800 dark:text-slate-200"
                     }`}>
-                      {event.title}
+                      {applyAlias(event.title)}
                     </p>
                     {event.location && (
                       <p className={`text-xs truncate mt-0.5 ${isActive ? "text-blue-600/80 dark:text-blue-300/80" : "text-slate-400 dark:text-slate-500"}`}>{event.location}</p>

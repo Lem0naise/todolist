@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aliases from "../aliases.js";
 import type * as auth from "../auth.js";
 import type * as dailyNotes from "../dailyNotes.js";
 import type * as http from "../http.js";
@@ -25,6 +26,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aliases: typeof aliases;
   auth: typeof auth;
   dailyNotes: typeof dailyNotes;
   http: typeof http;

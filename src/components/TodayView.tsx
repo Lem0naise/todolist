@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useLocalCache } from "../hooks/useLocalCache";
 import { TodoModal } from "./TodoModal";
 import type { Id } from "../../convex/_generated/dataModel";
 
-export const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -75,7 +75,6 @@ type TodayEvent = {
 };
 
 export function TodayView({
-  onGoToTodos,
   initialDate,
 }: {
   onGoToTodos: () => void;
@@ -87,22 +86,35 @@ export function TodayView({
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const [selectedWeekEvent, setSelectedWeekEvent] = useState<{ event: TodayEvent; date: string } | null>(null);
 
-  useEffect(() => {
+  const [prevInitialDate, setPrevInitialDate] = useState(initialDate);
+  if (initialDate !== prevInitialDate) {
+    setPrevInitialDate(initialDate);
     if (initialDate) setSelectedDate(initialDate);
-  }, [initialDate]);
+  }
 
-  const prevTodayRef = useRef(todayStr);
-  useEffect(() => {
-    if (prevTodayRef.current !== todayStr) {
-      prevTodayRef.current = todayStr;
-      setSelectedDate(todayStr);
-    }
-  });
+  const [prevToday, setPrevToday] = useState(todayStr);
+  if (todayStr !== prevToday) {
+    setPrevToday(todayStr);
+    setSelectedDate(todayStr);
+  }
 
   const dateInfo = getDateInfo(selectedDate);
   const weekDays = getWeekDays(selectedDate);
   const isToday = selectedDate === todayStr;
   const isFuture = selectedDate > todayStr;
+
+  const aliasesQuery = useQuery(api.aliases.list);
+  const aliases = useLocalCache("aliases", aliasesQuery) || [];
+  
+  const aliasesMap = new Map<string, string>();
+  for (const a of aliases) {
+    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
+  }
+
+  function applyAlias(title: string): string {
+    const cleanTitle = title.replace(/^Missed:\s*/i, "");
+    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
+  }
 
   const liveEvents = useQuery(api.timetable.getForDate, {
     date: selectedDate,
@@ -140,7 +152,6 @@ export function TodayView({
       }
     } else {
       await convertToTodo({ eventId: event._id, date: targetDate, dueDate: targetDate });
-      if (!isFuture) onGoToTodos();
     }
     if (selectedWeekEvent && selectedWeekEvent.event._id === event._id) {
       setSelectedWeekEvent(null);
@@ -202,6 +213,7 @@ export function TodayView({
                <DayColumn 
                  key={day.date} day={day} todayStr={todayStr} currentTime={currentTime} 
                  onSelectEvent={(e: TodayEvent) => setSelectedWeekEvent({ event: e, date: day.date })}
+                 aliasesMap={aliasesMap}
                />
             ))}
           </div>
@@ -231,6 +243,7 @@ export function TodayView({
                     isUnresolvedPast={isUnresolvedPast}
                     onToggleDone={() => handleToggleDone(event)}
                     onMarkTodo={() => handleMarkTodo(event)}
+                    aliasedTitle={applyAlias(event.title)}
                   />
                 );
               })}
@@ -286,6 +299,7 @@ export function TodayView({
                         isUnresolvedPast={isUnresolvedPast}
                         onToggleDone={() => handleToggleDone(event, selectedWeekEvent.date)}
                         onMarkTodo={() => handleMarkTodo(event, selectedWeekEvent.date)}
+                        aliasedTitle={applyAlias(event.title)}
                       />
                     </div>
                   </div>
@@ -305,7 +319,23 @@ export function TodayView({
   );
 }
 
-function EventCard({ event, isDone, isTodo, isUnresolvedPast, onToggleDone, onMarkTodo }: any) {
+function EventCard({
+  event,
+  isDone,
+  isTodo,
+  isUnresolvedPast,
+  onToggleDone,
+  onMarkTodo,
+  aliasedTitle,
+}: {
+  event: TodayEvent;
+  isDone: boolean;
+  isTodo: boolean;
+  isUnresolvedPast: boolean;
+  onToggleDone: () => void;
+  onMarkTodo: () => void;
+  aliasedTitle: string;
+}) {
   return (
     <div
       className={`rounded-xl border p-4 transition-all ${
@@ -337,7 +367,7 @@ function EventCard({ event, isDone, isTodo, isUnresolvedPast, onToggleDone, onMa
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap mb-1">
             <span className={`font-bold text-[15px] ${isDone ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-900 dark:text-slate-100"}`}>
-              {event.title}
+              {aliasedTitle ?? event.title}
             </span>
             {isUnresolvedPast && (
               <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800 ml-1">
@@ -384,10 +414,27 @@ function EventCard({ event, isDone, isTodo, isUnresolvedPast, onToggleDone, onMa
   );
 }
 
-function DayColumn({ day, todayStr, currentTime, onSelectEvent }: any) {
+function DayColumn({
+  day,
+  todayStr,
+  currentTime,
+  onSelectEvent,
+  aliasesMap,
+}: {
+  day: { date: string; dayOfWeek: number; label: string; dateNum: number };
+  todayStr: string;
+  currentTime: string;
+  onSelectEvent: (event: TodayEvent) => void;
+  aliasesMap: Map<string, string>;
+}) {
   const liveEvents = useQuery(api.timetable.getForDate, { date: day.date, dayOfWeek: day.dayOfWeek });
   const events = useLocalCache(`week:${day.date}`, liveEvents) as TodayEvent[] | null | undefined;
   const isToday = day.date === todayStr;
+
+  function applyAlias(title: string): string {
+    const cleanTitle = title.replace(/^Missed:\s*/i, "");
+    return aliasesMap?.get(cleanTitle.toLowerCase()) ?? cleanTitle;
+  }
 
   return (
     <div className={`flex-1 border-r border-slate-100 dark:border-slate-800 relative min-w-[100px] ${isToday ? "bg-blue-50/20 dark:bg-blue-900/10" : ""}`}>
@@ -414,27 +461,41 @@ function DayColumn({ day, todayStr, currentTime, onSelectEvent }: any) {
          const isUnresolvedPast = isPast && !isDone && !isTodo;
          
          return (
-           <button 
-             key={event._id}
-             onClick={() => onSelectEvent(event)}
-             className={`absolute left-1 right-1 rounded-md p-1.5 overflow-hidden border shadow-sm text-left transition-all hover:ring-1 hover:z-30 block ${
-               isDone ? "bg-slate-100 border-slate-200/80 opacity-60 dark:bg-slate-800 dark:border-slate-700 text-slate-500" :
-               isTodo ? "bg-amber-100/80 border-amber-200 dark:bg-amber-900/40 dark:border-amber-800/60 text-amber-900 dark:text-amber-100" :
-               isUnresolvedPast ? "bg-orange-100 border-orange-300 dark:bg-orange-900/40 dark:border-orange-600/60 text-orange-900 dark:text-orange-100" :
-               "bg-blue-50/90 border-blue-200 dark:bg-blue-900/40 dark:border-blue-800/60 text-blue-900 dark:text-blue-100"
-             } ${isUnresolvedPast ? "animate-pulse shadow-md" : ""}`}
-             style={{ top, height: Math.max(height, 24) }}
-           >
-             <div className="text-[10px] font-bold truncate leading-tight mb-0.5">{event.title}</div>
-             {height >= 40 && event.location && <div className="text-[9px] truncate opacity-80 font-medium leading-none">{event.location}</div>}
-           </button>
+             <button 
+               key={event._id}
+               onClick={() => onSelectEvent(event)}
+               className={`absolute left-1 right-1 rounded-md p-1.5 overflow-hidden border shadow-sm text-left transition-all hover:ring-1 hover:z-30 block ${
+                 isDone ? "bg-slate-100 border-slate-200/80 opacity-60 dark:bg-slate-800 dark:border-slate-700 text-slate-500" :
+                 isTodo ? "bg-amber-100/80 border-amber-200 dark:bg-amber-900/40 dark:border-amber-800/60 text-amber-900 dark:text-amber-100" :
+                 isUnresolvedPast ? "bg-orange-100 border-orange-300 dark:bg-orange-900/40 dark:border-orange-600/60 text-orange-900 dark:text-orange-100" :
+                 "bg-blue-50/90 border-blue-200 dark:bg-blue-900/40 dark:border-blue-800/60 text-blue-900 dark:text-blue-100"
+               } ${isUnresolvedPast ? "animate-pulse shadow-md" : ""}`}
+               style={{ top, height: Math.max(height, 24) }}
+             >
+               <div className="text-[10px] font-bold truncate leading-tight mb-0.5">{applyAlias(event.title)}</div>
+               {height >= 40 && event.location && <div className="text-[9px] truncate opacity-80 font-medium leading-none">{event.location}</div>}
+             </button>
          );
       })}
     </div>
   )
 }
 
-function WeekNav({ weekDays, selectedDate, todayStr, onSelectDay, onPrevWeek, onNextWeek }: any) {
+function WeekNav({
+  weekDays,
+  selectedDate,
+  todayStr,
+  onSelectDay,
+  onPrevWeek,
+  onNextWeek,
+}: {
+  weekDays: { date: string; dayOfWeek: number; label: string; dateNum: number }[];
+  selectedDate: string;
+  todayStr: string;
+  onSelectDay: (date: string) => void;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+}) {
   return (
     <div className="flex items-center justify-between mb-5 bg-white dark:bg-slate-900 p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
       <button onClick={onPrevWeek} className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -442,7 +503,7 @@ function WeekNav({ weekDays, selectedDate, todayStr, onSelectDay, onPrevWeek, on
       </button>
 
       <div className="flex gap-1 sm:gap-2 flex-1 mx-2">
-        {weekDays.map((day: any) => {
+        {weekDays.map((day) => {
           const isSelected = day.date === selectedDate;
           const isToday = day.date === todayStr;
           return (

@@ -132,6 +132,24 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   const [showCompleted, setShowCompleted] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<Category>>(new Set());
+  const [sortOrder, setSortOrder] = useState<Record<Category, "manual" | "dueDateAsc" | "dueDateDesc">>({
+    project: "manual",
+    lecture_catchup: "dueDateAsc",
+    other: "manual",
+  });
+
+  const aliasesQuery = useQuery(api.aliases.list);
+  const aliases = useLocalCache("aliases", aliasesQuery) || [];
+  
+  const aliasesMap = new Map<string, string>();
+  for (const a of aliases) {
+    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
+  }
+
+  function applyAlias(title: string): string {
+    const cleanTitle = title.replace(/^Missed:\s*/i, "");
+    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
+  }
 
   const liveTodos = useQuery(api.todos.list, { includeCompleted: true });
   const todos = useLocalCache<Todo[]>(`todos:all`, liveTodos) as Todo[] | null | undefined;
@@ -164,6 +182,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   const handleDragEnd = (event: DragEndEvent, cat: Category) => {
     const { active, over } = event;
     if (over && active.id !== over.id && todos) {
+      setSortOrder(prev => ({ ...prev, [cat]: "manual" }));
       const items = todos.filter(t => !t.completed && effectiveCategory(t) === cat);
       const oldIndex = items.findIndex((t) => t._id === active.id);
       const newIndex = items.findIndex((t) => t._id === over.id);
@@ -187,6 +206,18 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   };
   for (const t of pending) {
     groupedPending[effectiveCategory(t)].push(t);
+  }
+
+  for (const cat of CATEGORY_ORDER) {
+    const order = sortOrder[cat];
+    if (order !== "manual") {
+      groupedPending[cat].sort((a, b) => {
+        const dateA = a.dueDate ?? "9999-12-31";
+        const dateB = b.dueDate ?? "9999-12-31";
+        if (order === "dueDateAsc") return dateA.localeCompare(dateB);
+        return dateB.localeCompare(dateA);
+      });
+    }
   }
 
   return (
@@ -229,32 +260,101 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
             const isCollapsed = collapsed.has(cat);
             return (
               <div key={cat}>
-                <button
-                  onClick={() => {
-                    setCollapsed((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(cat)) next.delete(cat); else next.add(cat);
-                      return next;
-                    });
-                  }}
-                  className="flex items-center gap-2 w-full mb-2.5 group"
-                >
-                  <span className="text-base">{meta.icon}</span>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${meta.color}`}>
-                    {meta.label}
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${meta.color} ${meta.bg}`}>
-                    {items.length}
-                  </span>
-                  <svg
-                    className={`w-3 h-3 ml-auto text-slate-400 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                <div className="flex items-center w-full mb-2.5">
+                  <button
+                    onClick={() => {
+                      setCollapsed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(cat)) next.delete(cat); else next.add(cat);
+                        return next;
+                      });
+                    }}
+                    className="flex items-center gap-2 group"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
+                    <span className="text-base">{meta.icon}</span>
+                    <span className={`text-xs font-bold uppercase tracking-wider ${meta.color}`}>
+                      {meta.label}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${meta.color} ${meta.bg}`}>
+                      {items.length}
+                    </span>
+                    <svg
+                      className={`w-3 h-3 ml-2 text-slate-400 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <div className="ml-auto flex items-center gap-1">
+                    {cat !== "lecture_catchup" && (
+                      <button
+                        onClick={() => setSortOrder(prev => ({ ...prev, [cat]: "manual" }))}
+                        className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors ${sortOrder[cat] === "manual" ? "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                        title="Manual sorting"
+                      >
+                        manual
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSortOrder(prev => ({ ...prev, [cat]: "dueDateAsc" }))}
+                      className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors ${sortOrder[cat] === "dueDateAsc" ? "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                      title="Sort by due date (earliest first)"
+                    >
+                      asc
+                    </button>
+                    <button
+                      onClick={() => setSortOrder(prev => ({ ...prev, [cat]: "dueDateDesc" }))}
+                      className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors ${sortOrder[cat] === "dueDateDesc" ? "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                      title="Sort by due date (latest first)"
+                    >
+                      desc
+                    </button>
+                  </div>
+                </div>
 
                 {!isCollapsed && (
+                  cat === "lecture_catchup" ? (
+                    <div className="space-y-4 mt-2">
+                      {Object.entries(
+                        items.reduce((acc, item) => {
+                          const subject = applyAlias(item.title);
+                          if (!acc[subject]) acc[subject] = [];
+                          acc[subject].push(item);
+                          return acc;
+                        }, {} as Record<string, Todo[]>)
+                      ).sort(([a], [b]) => a.localeCompare(b)).map(([subject, subjectItems]) => (
+                        <div key={subject} className="space-y-2 ml-2 pl-3 border-l-2 border-blue-100 dark:border-blue-900/30">
+                          <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300">{subject}</h4>
+                          {subjectItems.map((todo) => (
+                            <SortableTodoItem
+                              key={todo._id}
+                              todo={todo}
+                              expanded={expanded.has(todo._id)}
+                              onToggleExpand={() => {
+                                setExpanded(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(todo._id)) next.delete(todo._id); else next.add(todo._id);
+                                  return next;
+                                })
+                              }}
+                              onToggleDone={() => completeTodo({ id: todo._id, completed: !todo.completed })}
+                              onEdit={() => { setEditTodo(todo); setShowModal(true); }}
+                              onDelete={() => { if (confirm("Delete this?")) removeTodo({ id: todo._id }) }}
+                              onNavigateToDate={onNavigateToDate}
+                              onSubTaskToggle={(stId) => {
+                                if (!todo.subTasks) return;
+                                const updated = todo.subTasks.map(s => s.id === stId ? { ...s, done: !s.done } : s);
+                                updateSubTasks({ id: todo._id, subTasks: updated });
+                              }}
+                              onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
+                              isCatchup={true}
+                              aliasedTitle={applyAlias(todo.title)}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
@@ -287,11 +387,14 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                               updateSubTasks({ id: todo._id, subTasks: updated });
                             }}
                             onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
+                            isCatchup={false}
+                            aliasedTitle={applyAlias(todo.title)}
                           />
                         ))}
                       </div>
                     </SortableContext>
                   </DndContext>
+                  )
                 )}
               </div>
             );
@@ -310,32 +413,34 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                 {done.length} completed
               </button>
               {showCompleted && (
-                <div className="space-y-2 mt-3">
-                  {done.map((todo) => (
-                    <SortableTodoItem
-                      key={todo._id}
-                      todo={todo}
-                      expanded={expanded.has(todo._id)}
-                      onToggleExpand={() => {
-                        setExpanded(prev => {
-                          const next = new Set(prev);
-                          if (next.has(todo._id)) next.delete(todo._id); else next.add(todo._id);
-                          return next;
-                        })
-                      }}
-                      onToggleDone={() => completeTodo({ id: todo._id, completed: !todo.completed })}
-                      onEdit={() => { setEditTodo(todo); setShowModal(true); }}
-                      onDelete={() => { if (confirm("Delete this?")) removeTodo({ id: todo._id }) }}
-                      onNavigateToDate={onNavigateToDate}
-                      onSubTaskToggle={(stId) => {
-                        if (!todo.subTasks) return;
-                        const updated = todo.subTasks.map(s => s.id === stId ? { ...s, done: !s.done } : s);
-                        updateSubTasks({ id: todo._id, subTasks: updated });
-                      }}
-                      onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
-                    />
-                  ))}
-                </div>
+                      <div className="space-y-2 mt-3">
+                        {done.map((todo) => (
+                          <SortableTodoItem
+                            key={todo._id}
+                            todo={todo}
+                            expanded={expanded.has(todo._id)}
+                            onToggleExpand={() => {
+                              setExpanded(prev => {
+                                const next = new Set(prev);
+                                if (next.has(todo._id)) next.delete(todo._id); else next.add(todo._id);
+                                return next;
+                              })
+                            }}
+                            onToggleDone={() => completeTodo({ id: todo._id, completed: !todo.completed })}
+                            onEdit={() => { setEditTodo(todo); setShowModal(true); }}
+                            onDelete={() => { if (confirm("Delete this?")) removeTodo({ id: todo._id }) }}
+                            onNavigateToDate={onNavigateToDate}
+                            onSubTaskToggle={(stId) => {
+                              if (!todo.subTasks) return;
+                              const updated = todo.subTasks.map(s => s.id === stId ? { ...s, done: !s.done } : s);
+                              updateSubTasks({ id: todo._id, subTasks: updated });
+                            }}
+                            onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
+                            isCatchup={effectiveCategory(todo) === "lecture_catchup"}
+                            aliasedTitle={applyAlias(todo.title)}
+                          />
+                        ))}
+                      </div>
               )}
             </div>
           )}
@@ -362,6 +467,8 @@ function SortableTodoItem(props: {
   onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
+  isCatchup?: boolean;
+  aliasedTitle?: string;
 }) {
   const {
     attributes,
@@ -370,7 +477,7 @@ function SortableTodoItem(props: {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: props.todo._id, disabled: props.todo.completed });
+  } = useSortable({ id: props.todo._id, disabled: props.todo.completed || props.isCatchup });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -397,6 +504,8 @@ function TodoItem({
   onSubTaskToggle,
   onProgressChange,
   dragHandleProps,
+  isCatchup,
+  aliasedTitle,
 }: {
   todo: Todo;
   expanded: boolean;
@@ -407,7 +516,9 @@ function TodoItem({
   onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
-  dragHandleProps?: any;
+  dragHandleProps?: Record<string, unknown>;
+  isCatchup?: boolean;
+  aliasedTitle?: string;
 }) {
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
   const hasDetails = !!(todo.description);
@@ -429,7 +540,7 @@ function TodoItem({
     <div className={`rounded-xl border p-4 transition-all ${borderClass}`}>
       <div className="flex items-start gap-3">
         {/* Drag Handle */}
-        {!todo.completed && (
+        {!todo.completed && !isCatchup && (
           <div {...dragHandleProps} className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400 p-0.5 -ml-1.5 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16M4 16h16" />
@@ -454,7 +565,7 @@ function TodoItem({
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`text-sm font-bold tracking-tight ${todo.completed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-900 dark:text-slate-100"}`}>
-              {todo.title}
+              {aliasedTitle ?? todo.title}
             </span>
             {todo.highPriority && !todo.completed && (
               <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800/50 rounded font-bold uppercase tracking-wider">High</span>
@@ -475,10 +586,12 @@ function TodoItem({
                   className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/60 rounded font-bold uppercase tracking-wider hover:bg-blue-200 dark:hover:bg-blue-800/60 transition-colors"
                   title={`Go to ${todo.sourceOccurrenceDate}`}
                 >
-                  class
+                  class ({formatShortDate(todo.sourceOccurrenceDate)})
                 </button>
               ) : (
-                <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/60 rounded font-bold uppercase tracking-wider">class</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/60 rounded font-bold uppercase tracking-wider">
+                  class {todo.sourceOccurrenceDate ? `(${formatShortDate(todo.sourceOccurrenceDate)})` : ""}
+                </span>
               )
             )}
 

@@ -17,6 +17,7 @@ export function useLocalCache<T>(
     if (liveData !== undefined && liveData !== null) {
       try {
         localStorage.setItem(`unitrack:${key}`, JSON.stringify(liveData));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCached(liveData);
       } catch {
         // localStorage might be full
