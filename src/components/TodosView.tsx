@@ -146,9 +146,51 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
   }
 
-  function applyAlias(title: string): string {
-    const cleanTitle = title.replace(/^Missed:\s*/i, "");
-    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
+  function getModuleKey(todo: Todo): string {
+    const cleanTitle = todo.title.replace(/^Missed:\s*/i, "");
+    const linkedTitle = todo.linkedEventTitle?.trim() || "";
+    
+    // Attempt to extract module code (e.g. COMP2322)
+    const moduleCodeMatch = (linkedTitle || cleanTitle).match(/[a-zA-Z]{2,4}\s*\d{3,4}/);
+    const moduleCode = moduleCodeMatch ? moduleCodeMatch[0].toUpperCase().replace(/\s+/g, '') : null;
+
+    // Check aliases in order of preference
+    if (moduleCode && aliasesMap.has(moduleCode.toLowerCase())) {
+      return aliasesMap.get(moduleCode.toLowerCase())!;
+    }
+    if (linkedTitle && aliasesMap.has(linkedTitle.toLowerCase())) {
+      return aliasesMap.get(linkedTitle.toLowerCase())!;
+    }
+    if (aliasesMap.has(cleanTitle.toLowerCase())) {
+      return aliasesMap.get(cleanTitle.toLowerCase())!;
+    }
+    
+    // Fallbacks
+    if (moduleCode) return moduleCode;
+    if (linkedTitle) return linkedTitle;
+    
+    return cleanTitle;
+  }
+
+  function getDisplayTitle(todo: Todo, groupKey?: string): string {
+    let cleanTitle = todo.title.replace(/^Missed:\s*/i, "");
+    
+    if (groupKey) {
+      const groupKeyLower = groupKey.toLowerCase();
+      const moduleCodeMatch = cleanTitle.match(/[a-zA-Z]{2,4}\s*\d{3,4}/);
+      const moduleCode = moduleCodeMatch ? moduleCodeMatch[0] : null;
+      
+      // If the title starts with the module code and the group key is the module code or its alias
+      if (moduleCode && (groupKeyLower === moduleCode.toLowerCase() || aliasesMap.get(moduleCode.toLowerCase())?.toLowerCase() === groupKeyLower)) {
+        cleanTitle = cleanTitle.substring(cleanTitle.indexOf(moduleCode) + moduleCode.length).trim();
+        if (cleanTitle.startsWith("-")) cleanTitle = cleanTitle.substring(1).trim();
+      } else if (cleanTitle.toLowerCase().startsWith(groupKeyLower)) {
+        cleanTitle = cleanTitle.substring(groupKey.length).trim();
+        if (cleanTitle.startsWith("-")) cleanTitle = cleanTitle.substring(1).trim();
+      }
+    }
+    
+    return cleanTitle || todo.title.replace(/^Missed:\s*/i, ""); // Fallback if we accidentally cleared it all
   }
 
   const liveTodos = useQuery(api.todos.list, { includeCompleted: true });
@@ -317,7 +359,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                     <div className="space-y-4 mt-2">
                       {Object.entries(
                         items.reduce((acc, item) => {
-                          const subject = applyAlias(item.title);
+                          const subject = getModuleKey(item);
                           if (!acc[subject]) acc[subject] = [];
                           acc[subject].push(item);
                           return acc;
@@ -348,7 +390,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                               }}
                               onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                               isCatchup={true}
-                              aliasedTitle={applyAlias(todo.title)}
+                              aliasedTitle={getDisplayTitle(todo, subject)}
                             />
                           ))}
                         </div>
@@ -388,7 +430,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                             }}
                             onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                             isCatchup={false}
-                            aliasedTitle={applyAlias(todo.title)}
+                            aliasedTitle={getDisplayTitle(todo)}
                           />
                         ))}
                       </div>
@@ -437,7 +479,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                             }}
                             onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                             isCatchup={effectiveCategory(todo) === "lecture_catchup"}
-                            aliasedTitle={applyAlias(todo.title)}
+                            aliasedTitle={getDisplayTitle(todo)}
                           />
                         ))}
                       </div>
