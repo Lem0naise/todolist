@@ -1,6 +1,7 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { matchModuleByTitle } from "./moduleMatcher";
 
 export const list = query({
   args: {},
@@ -72,36 +73,23 @@ export const autoAssignAll = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
-    const modules = await ctx.db
-      .query("modules")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+    let assigned = 0;
 
+    // Assign events
     const events = await ctx.db
       .query("timetableEvents")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
-    let assigned = 0;
     for (const event of events) {
-      for (const mod of modules) {
-        for (const pattern of mod.patterns) {
-          try {
-            if (new RegExp(pattern, "i").test(event.title)) {
-              if (event.moduleId !== mod._id) {
-                await ctx.db.patch(event._id, { moduleId: mod._id });
-                assigned++;
-              }
-              break;
-            }
-          } catch {
-            // Skip invalid regex
-          }
-        }
+      const matchedId = await matchModuleByTitle(ctx, userId, event.title);
+      if (matchedId && event.moduleId !== matchedId) {
+        await ctx.db.patch(event._id, { moduleId: matchedId });
+        assigned++;
       }
     }
 
-    // Also update todos: inherit module from linked event, or match title directly
+    // Assign todos: inherit from linked event, or match title directly
     const todos = await ctx.db
       .query("todos")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -120,21 +108,10 @@ export const autoAssignAll = mutation({
         }
       }
       // Pattern-match todo title directly
-      for (const mod of modules) {
-        let matched = false;
-        for (const pattern of mod.patterns) {
-          try {
-            if (new RegExp(pattern, "i").test(todo.title)) {
-              await ctx.db.patch(todo._id, { moduleId: mod._id });
-              assigned++;
-              matched = true;
-              break;
-            }
-          } catch {
-            // Skip invalid regex
-          }
-        }
-        if (matched) break;
+      const matchedId = await matchModuleByTitle(ctx, userId, todo.title);
+      if (matchedId) {
+        await ctx.db.patch(todo._id, { moduleId: matchedId });
+        assigned++;
       }
     }
 
@@ -149,22 +126,6 @@ export const matchEvent = internalMutation({
     title: v.string(),
   },
   handler: async (ctx, { userId, title }) => {
-    const modules = await ctx.db
-      .query("modules")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-
-    for (const mod of modules) {
-      for (const pattern of mod.patterns) {
-        try {
-          if (new RegExp(pattern, "i").test(title)) {
-            return mod._id;
-          }
-        } catch {
-          // Skip invalid regex
-        }
-      }
-    }
-    return null;
+    return await matchModuleByTitle(ctx, userId, title) ?? null;
   },
 });

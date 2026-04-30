@@ -13,6 +13,7 @@ import type * as http from "../http.js";
 import type * as icsImport from "../icsImport.js";
 import type * as icsImportInternal from "../icsImportInternal.js";
 import type * as ignored from "../ignored.js";
+import type * as moduleMatcher from "../moduleMatcher.js";
 import type * as modules from "../modules.js";
 import type * as occurrences from "../occurrences.js";
 import type * as timetable from "../timetable.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   icsImport: typeof icsImport;
   icsImportInternal: typeof icsImportInternal;
   ignored: typeof ignored;
+  moduleMatcher: typeof moduleMatcher;
   modules: typeof modules;
   occurrences: typeof occurrences;
   timetable: typeof timetable;
