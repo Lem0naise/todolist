@@ -11,8 +11,22 @@ type Feed = {
   lastSynced?: number;
 };
 
+type TimetableEvent = {
+  _id: Id<"timetableEvents">;
+  title: string;
+  source: "ical" | "manual";
+  moduleId?: Id<"modules">;
+  moduleName?: string;
+};
+
+type Module = {
+  _id: Id<"modules">;
+  name: string;
+  patterns: string[];
+};
+
 export function SettingsView({ onSignOut }: { onSignOut: () => void }) {
-  const [activeTab, setActiveTab] = useState<"timetable" | "account">("timetable");
+  const [activeTab, setActiveTab] = useState<"timetable" | "modules" | "account">("timetable");
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
@@ -30,6 +44,14 @@ export function SettingsView({ onSignOut }: { onSignOut: () => void }) {
           Timetable
         </button>
         <button
+          onClick={() => setActiveTab("modules")}
+          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            activeTab === "modules" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+          }`}
+        >
+          Modules
+        </button>
+        <button
           onClick={() => setActiveTab("account")}
           className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === "account" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
@@ -41,6 +63,8 @@ export function SettingsView({ onSignOut }: { onSignOut: () => void }) {
 
       {activeTab === "timetable" ? (
         <TimetableSettings />
+      ) : activeTab === "modules" ? (
+        <ModulesSettings />
       ) : (
         <AccountSettings onSignOut={onSignOut} />
       )}
@@ -239,9 +263,6 @@ function TimetableSettings() {
         )}
       </section>
 
-      {/* Subject Aliases */}
-      <EventAliasesSection />
-
       {/* Tips */}
       <section className="bg-blue-50 rounded-xl p-4 border border-blue-100">
         <h4 className="text-xs font-semibold text-blue-800 mb-2">How to get your iCAL link</h4>
@@ -276,7 +297,6 @@ function IcsImportForm({ onDone }: { onDone: () => void }) {
         name: name.trim() || "My Timetable",
       });
       setSuccessCount(result.count);
-      // Auto-close after a short delay
       setTimeout(onDone, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
@@ -339,7 +359,7 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [isRecurring, setIsRecurring] = useState(true);
-  const [dayOfWeek, setDayOfWeek] = useState(1); // Monday
+  const [dayOfWeek, setDayOfWeek] = useState(1);
   const [recurrenceStart, setRecurrenceStart] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -422,7 +442,6 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
         </div>
       </div>
 
-      {/* Recurring toggle */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -520,112 +539,225 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function EventAliasesSection() {
-  const aliases = useQuery(api.aliases.list);
+function ModulesSettings() {
+  const modules = useQuery(api.modules.list);
   const events = useQuery(api.timetable.list);
-  const addAlias = useMutation(api.aliases.add);
-  const removeAlias = useMutation(api.aliases.remove);
-  const [originalTitle, setOriginalTitle] = useState("");
-  const [alias, setAlias] = useState("");
-  const [adding, setAdding] = useState(false);
+  const createModule = useMutation(api.modules.create);
+  const updateModule = useMutation(api.modules.update);
+  const removeModule = useMutation(api.modules.remove);
+  const assignEvent = useMutation(api.modules.assignEvent);
+  const autoAssignAll = useMutation(api.modules.autoAssignAll);
 
-  // Get unique event titles that haven't been aliased yet
-  const aliasedTitles = new Set(aliases?.map(a => a.originalTitle) || []);
-  const uniqueTitles = Array.from(new Set(events?.map(e => e.title) || []))
-    .filter(title => !aliasedTitles.has(title))
-    .sort();
+  const [moduleName, setModuleName] = useState("");
+  const [patternsStr, setPatternsStr] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingModule, setEditingModule] = useState<Module | null>(null);
+  const [autoAssigning, setAutoAssigning] = useState(false);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!moduleName.trim() || !patternsStr.trim()) return;
+    setAdding(true);
+    try {
+      const patterns = patternsStr.split("\n").map((p) => p.trim()).filter(Boolean);
+      await createModule({ name: moduleName.trim(), patterns });
+      setModuleName("");
+      setPatternsStr("");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingModule || !moduleName.trim() || !patternsStr.trim()) return;
+    setAdding(true);
+    try {
+      const patterns = patternsStr.split("\n").map((p) => p.trim()).filter(Boolean);
+      await updateModule({ id: editingModule._id, name: moduleName.trim(), patterns });
+      setEditingModule(null);
+      setModuleName("");
+      setPatternsStr("");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const startEdit = (mod: Module) => {
+    setEditingModule(mod);
+    setModuleName(mod.name);
+    setPatternsStr(mod.patterns.join("\n"));
+  };
+
+  const cancelEdit = () => {
+    setEditingModule(null);
+    setModuleName("");
+    setPatternsStr("");
+  };
+
+  const handleAutoAssign = async () => {
+    setAutoAssigning(true);
+    try {
+      const result = await autoAssignAll({});
+      alert(`Assigned ${result.assigned} events to their modules.`);
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-700">Subject Aliases</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Shorten long event titles to acronyms (e.g. "COMP1234 - Intro" → "COMP1234")</p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* Create / Edit Module */}
+      <section>
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">
+          {editingModule ? "Edit Module" : "Add Module"}
+        </h3>
 
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!originalTitle.trim() || !alias.trim()) return;
-          setAdding(true);
-          try {
-            await addAlias({ originalTitle: originalTitle.trim(), alias: alias.trim() });
-            setOriginalTitle("");
-            setAlias("");
-          } finally {
-            setAdding(false);
-          }
-        }}
-        className="flex gap-2 mb-3"
-      >
-        <div className="flex-1 min-w-0">
-          {uniqueTitles.length > 0 ? (
-            <select
-              value={originalTitle}
-              onChange={(e) => setOriginalTitle(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="" disabled>Select original title...</option>
-              {uniqueTitles.map((title) => (
-                <option key={title} value={title}>{title}</option>
-              ))}
-            </select>
-          ) : (
+        <form onSubmit={editingModule ? handleUpdate : handleCreate} className="bg-white rounded-xl border border-slate-200 p-4 mb-3 space-y-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Module name</label>
             <input
               type="text"
-              value={originalTitle}
-              onChange={(e) => setOriginalTitle(e.target.value)}
-              placeholder="Original title"
+              value={moduleName}
+              onChange={(e) => setModuleName(e.target.value)}
+              placeholder="e.g. Computer Systems"
+              required
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          )}
-        </div>
-        <input
-          type="text"
-          value={alias}
-          onChange={(e) => setAlias(e.target.value)}
-          placeholder="Alias"
-          className="w-24 flex-shrink-0 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={adding || !originalTitle.trim() || !alias.trim()}
-          className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg transition-colors flex-shrink-0"
-        >
-          Add
-        </button>
-      </form>
-
-      {aliases == null ? (
-        <div className="text-sm text-slate-400">Loading...</div>
-      ) : aliases.length === 0 ? (
-        <p className="text-sm text-slate-400">No aliases yet.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {aliases.map((item) => (
-            <div
-              key={item._id}
-              className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
-            >
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                <span className="text-sm text-slate-700 truncate">{item.originalTitle}</span>
-                <span className="text-slate-400 text-sm">→</span>
-                <span className="text-sm font-semibold text-blue-700">{item.alias}</span>
-              </div>
-              <button
-                onClick={() => removeAlias({ id: item._id })}
-                className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">
+              Regex patterns (one per line)
+              <span className="text-slate-400 ml-1">— matched against event titles</span>
+            </label>
+            <textarea
+              value={patternsStr}
+              onChange={(e) => setPatternsStr(e.target.value)}
+              placeholder={"COMP\\d{4}\nComputer Systems"}
+              rows={3}
+              required
+              className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            {editingModule && (
+              <button type="button" onClick={cancelEdit} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg">
+                Cancel
               </button>
-            </div>
-          ))}
+            )}
+            <button
+              type="submit"
+              disabled={adding || !moduleName.trim() || !patternsStr.trim()}
+              className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg"
+            >
+              {adding ? "Saving..." : editingModule ? "Update" : "Add Module"}
+            </button>
+          </div>
+        </form>
+
+        {/* Module List */}
+        {modules == null ? (
+          <div className="text-sm text-slate-400">Loading...</div>
+        ) : modules.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            No modules defined yet. Add modules to group your events and tasks.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {(modules as Module[]).map((mod) => (
+              <div
+                key={mod._id}
+                className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800">{mod.name}</p>
+                  <p className="text-xs text-slate-400 truncate">
+                    {mod.patterns.join(", ")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => startEdit(mod)}
+                    className="text-slate-300 hover:text-blue-500 transition-colors p-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => removeModule({ id: mod._id })}
+                    className="text-slate-300 hover:text-red-400 transition-colors p-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Batch Assign */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Batch Assignment</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Assign modules to each event, or run auto-detection</p>
+          </div>
+          <button
+            onClick={handleAutoAssign}
+            disabled={autoAssigning || !(modules as Module[])?.length}
+            className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg font-medium transition-colors"
+          >
+            {autoAssigning ? "Running..." : "Auto-Detect"}
+          </button>
         </div>
-      )}
-    </section>
+
+        {events == null ? (
+          <div className="text-sm text-slate-400">Loading...</div>
+        ) : events.length === 0 ? (
+          <p className="text-sm text-slate-400">No events to assign.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-96 overflow-y-auto">
+            {(events as TimetableEvent[]).map((event: TimetableEvent) => {
+              const currentModule = (modules as Module[])?.find(m => m._id === event.moduleId);
+              return (
+                <div
+                  key={event._id}
+                  className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">{event.title}</p>
+                    <p className="text-xs text-slate-400">
+                      {event.source === "ical" ? "iCAL" : "Manual"}
+                      {event.moduleName && <span> · Current: {currentModule?.name}</span>}
+                    </p>
+                  </div>
+                  <select
+                    value={event.moduleId ?? ""}
+                    onChange={async (e) => {
+                      const val = e.target.value;
+                      await assignEvent({
+                        eventId: event._id,
+                        moduleId: val ? (val as Id<"modules">) : undefined,
+                      });
+                    }}
+                    className="text-xs px-2 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
+                  >
+                    <option value="">None</option>
+                    {(modules as Module[])?.map(mod => (
+                      <option key={mod._id} value={mod._id}>{mod.name}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 

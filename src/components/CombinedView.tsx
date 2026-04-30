@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useLocalCache } from "../hooks/useLocalCache";
 import { TodoModal } from "./TodoModal";
 import type { Id } from "../../convex/_generated/dataModel";
 
-// ── helpers ────────────────────────────────────────────────────────────────
 function getTodayStr() {
   return new Date().toISOString().split("T")[0];
 }
@@ -23,13 +22,13 @@ function formatDueLabel(dateStr: string): { text: string; overdue: boolean; toda
   return { text: new Date(dateStr + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }), overdue: false, today: false };
 }
 
-// ── types ──────────────────────────────────────────────────────────────────
 type TodayEvent = {
   _id: Id<"timetableEvents">;
   title: string;
   location?: string;
   startTime: string;
   endTime?: string;
+  moduleName?: string;
   occurrence: { _id: Id<"occurrences">; status: "pending" | "done" | "todo" } | null;
 };
 
@@ -43,26 +42,17 @@ type Todo = {
   category?: "lecture_catchup" | "project" | "other";
   subTasks?: { id: string; title: string; done: boolean }[];
   manualProgress?: number;
+  moduleName?: string;
+  linkedEventTitle?: string;
 };
 
-type DailyNote = {
-  _id: Id<"dailyNotes">;
-  text: string;
-  targetTime?: string;
-  completed: boolean;
-  order: number;
-  createdAt: number;
-};
-
-// ── main component ─────────────────────────────────────────────────────────
-export function DashboardView({ onGoToTodos, onGoToSchedule }: {
+export function CombinedView({ onGoToTodos, onGoToSchedule }: {
   onGoToTodos: () => void;
   onGoToSchedule: () => void;
 }) {
   const todayStr = getTodayStr();
   const [now, setNow] = useState(new Date());
 
-  // Update clock every minute
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
@@ -74,27 +64,17 @@ export function DashboardView({ onGoToTodos, onGoToSchedule }: {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
-      {/* Header */}
       <div className="px-6 pt-8 pb-6">
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-0.5">{dateDisplay}</p>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{greeting} 👋</h1>
       </div>
 
-      {/* Dashboard container - Bento layout on large screens */}
       <div className="px-6 pb-8 mx-auto xl:max-w-7xl max-w-5xl">
         <div className="flex flex-col lg:flex-row gap-5">
-          {/* Left Column (Schedule + Notes) - 55% width */}
-          <div className="flex flex-col gap-5 lg:w-[55%]">
-            <div className="flex-none">
-              <SchedulePanel todayStr={todayStr} now={now} onGoToSchedule={onGoToSchedule} />
-            </div>
-            <div className="flex-1 min-h-[300px]">
-              <NotesPanel />
-            </div>
+          <div className="lg:w-[55%]">
+            <SchedulePanel todayStr={todayStr} now={now} onGoToSchedule={onGoToSchedule} />
           </div>
-          
-          {/* Right Column (Tasks) - 45% width */}
-          <div className="flex-1 h-full lg:max-h-[calc(100vh-140px)]">
+          <div className="flex-1">
             <TasksPanel todayStr={todayStr} onGoToTodos={onGoToTodos} />
           </div>
         </div>
@@ -103,7 +83,6 @@ export function DashboardView({ onGoToTodos, onGoToSchedule }: {
   );
 }
 
-// ── Schedule Panel ──────────────────────────────────────────────────────────
 function SchedulePanel({ todayStr, now, onGoToSchedule }: {
   todayStr: string;
   now: Date;
@@ -111,19 +90,8 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
 }) {
   const dayOfWeek = new Date(todayStr + "T12:00:00").getDay();
   const liveEvents = useQuery(api.timetable.getForDate, { date: todayStr, dayOfWeek });
-  const events = (useLocalCache<TodayEvent[]>(`dash:schedule:${todayStr}`, liveEvents) ?? undefined) as TodayEvent[] | undefined;
+  const events = (useLocalCache<TodayEvent[]>(`combined:schedule:${todayStr}`, liveEvents) ?? undefined) as TodayEvent[] | undefined;
   const setStatus = useMutation(api.occurrences.setStatus);
-
-  const aliasesQuery = useQuery(api.aliases.list);
-  const aliases = useLocalCache("aliases", aliasesQuery) || [];
-  const aliasesMap = new Map<string, string>();
-  for (const a of aliases) {
-    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
-  }
-  function applyAlias(title: string): string {
-    const cleanTitle = title.replace(/^Missed:\s*/i, "");
-    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
-  }
 
   const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
@@ -180,8 +148,6 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
               const status = event.occurrence?.status ?? "pending";
               const isDone = status === "done";
               const isPast = event.startTime < currentTime && !isDone;
-              
-              // If it's the exact currently active class, give it a subtle highlight
               const isActive = (event.startTime <= currentTime) && (!event.endTime || event.endTime > currentTime) && !isDone;
 
               elements.push(
@@ -198,11 +164,9 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
                           : "bg-white border-slate-100 hover:border-slate-200 dark:bg-slate-800/80 dark:border-slate-700 dark:hover:border-slate-600"
                     }`}
                 >
-                  {/* Time bar */}
                   <div className="flex-shrink-0 text-right w-10">
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{event.startTime}</span>
                   </div>
-                  {/* Status dot */}
                   <div className="relative flex items-center justify-center">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 z-10 ${
                       isDone ? "bg-green-400 dark:bg-green-500" : 
@@ -212,20 +176,25 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
                     }`} />
                     {isActive && <div className="absolute w-4 h-4 bg-blue-400/30 dark:bg-blue-500/30 rounded-full animate-ping" />}
                   </div>
-                  {/* Content */}
                   <div className="flex-1 min-w-0 py-0.5">
-                    <p className={`text-sm font-semibold truncate ${
-                      isDone ? "line-through text-slate-400 dark:text-slate-500" : 
-                      isActive ? "text-blue-900 dark:text-blue-100" :
-                      "text-slate-800 dark:text-slate-200"
-                    }`}>
-                      {applyAlias(event.title)}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className={`text-sm font-semibold truncate ${
+                        isDone ? "line-through text-slate-400 dark:text-slate-500" : 
+                        isActive ? "text-blue-900 dark:text-blue-100" :
+                        "text-slate-800 dark:text-slate-200"
+                      }`}>
+                        {event.title}
+                      </p>
+                      {event.moduleName && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800/60 rounded font-bold uppercase tracking-wider truncate max-w-[120px]">
+                          {event.moduleName}
+                        </span>
+                      )}
+                    </div>
                     {event.location && (
                       <p className={`text-xs truncate mt-0.5 ${isActive ? "text-blue-600/80 dark:text-blue-300/80" : "text-slate-400 dark:text-slate-500"}`}>{event.location}</p>
                     )}
                   </div>
-                  {/* Done check */}
                   <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
                     isDone ? "bg-green-500 border-green-500 dark:bg-green-600 dark:border-green-600" : 
                     "border-slate-200 dark:border-slate-600 group-hover:border-green-300 dark:group-hover:border-green-500"
@@ -250,27 +219,24 @@ function SchedulePanel({ todayStr, now, onGoToSchedule }: {
   );
 }
 
-// ── Tasks Panel ─────────────────────────────────────────────────────────────
 function TasksPanel({ todayStr, onGoToTodos }: { todayStr: string; onGoToTodos: () => void }) {
   const [showModal, setShowModal] = useState(false);
   const liveTodos = useQuery(api.todos.list, { includeCompleted: false });
-  const todos = (useLocalCache<Todo[]>("dash:todos", liveTodos) ?? undefined) as Todo[] | undefined;
+  const todos = (useLocalCache<Todo[]>("combined:todos", liveTodos) ?? undefined) as Todo[] | undefined;
   const completeTodo = useMutation(api.todos.complete);
 
   const handleToggle = (id: Id<"todos">, completed: boolean) => {
     completeTodo({ id, completed: !completed });
   };
 
-  // Filter: due today + due in next 3 days + overdue high-priority
   const relevantTodos = todos?.filter((t) => {
-    if (!t.dueDate) return t.highPriority; // show high-priority with no date
+    if (!t.dueDate) return t.highPriority;
     const diff = Math.floor(
       (new Date(t.dueDate + "T12:00:00").getTime() - new Date(todayStr + "T12:00:00").getTime()) / 86400000
     );
-    return diff <= 3 || (diff < 0 && t.highPriority); // due within 3 days, or overdue+high priority
+    return diff <= 3 || (diff < 0 && t.highPriority);
   }) ?? [];
 
-  // Group
   const overdue = relevantTodos.filter((t) => t.dueDate && t.dueDate < todayStr);
   const dueToday = relevantTodos.filter((t) => t.dueDate === todayStr);
   const upcoming = relevantTodos.filter((t) => t.dueDate && t.dueDate > todayStr);
@@ -346,7 +312,6 @@ function TodoGroup({
           const due = todo.dueDate ? formatDueLabel(todo.dueDate) : null;
           const isProject = (todo.category ?? "other") === "project";
           const isCatchup = todo.category === "lecture_catchup";
-          // Compute progress for project todos
           let progress: number | null = null;
           if (isProject) {
             if (todo.subTasks && todo.subTasks.length > 0) {
@@ -373,10 +338,15 @@ function TodoGroup({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{todo.title}</p>
                 </div>
-                {isCatchup && (
+                {todo.moduleName && (
+                  <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-indigo-100/80 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded font-bold uppercase tracking-wider max-w-[100px] truncate">
+                    {todo.moduleName}
+                  </span>
+                )}
+                {!todo.moduleName && isCatchup && (
                   <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100/80 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded font-bold uppercase tracking-wider">Catchup</span>
                 )}
-                {isProject && (
+                {!todo.moduleName && isProject && (
                   <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100/80 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded font-bold uppercase tracking-wider">Project</span>
                 )}
                 {due && (
@@ -396,9 +366,7 @@ function TodoGroup({
                     <div
                       className="h-full bg-purple-500 dark:bg-purple-400 rounded-full transition-all duration-300 relative overflow-hidden"
                       style={{ width: `${progress}%` }}
-                    >
-                      <div className="absolute inset-0 bg-white/20 dark:bg-white/10" style={{ transform: 'translateX(-100%)', animation: 'progress-shine 2s infinite' }} />
-                    </div>
+                    />
                   </div>
                   <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold w-8 text-right">{progress}%</span>
                 </div>
@@ -411,151 +379,6 @@ function TodoGroup({
   );
 }
 
-// ── Notes Panel (Persistent Sticky Notes) ──────────────────────────────────
-function NotesPanel() {
-  const [newText, setNewText] = useState("");
-  const [adding, setAdding] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // Use listAll instead of getting notes for a specific date
-  const liveNotes = useQuery(api.dailyNotes.listAll);
-  const notes = (useLocalCache<DailyNote[]>(`dash:notes:all`, liveNotes) ?? undefined) as DailyNote[] | undefined;
-
-  const addNote = useMutation(api.dailyNotes.add);
-  const toggleNote = useMutation(api.dailyNotes.toggle);
-  const removeNote = useMutation(api.dailyNotes.remove);
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newText.trim()) return;
-    setAdding(true);
-    try {
-      await addNote({ date: getTodayStr(), text: newText.trim() });
-      setNewText("");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const incompleteCount = notes?.filter((n) => !n.completed).length ?? 0;
-
-  return (
-    <PanelCard
-      title="Sticky Notes"
-      isFullHeight={true}
-      icon={
-        <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-      }
-      badge={incompleteCount > 0 ? `${incompleteCount} notes` : undefined}
-    >
-      {/* Add form */}
-      <form onSubmit={handleAdd} className="flex gap-2 mb-4 relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={newText}
-          onChange={(e) => setNewText(e.target.value)}
-          placeholder="Jot something down..."
-          className="flex-1 min-w-0 px-3.5 py-2.5 text-sm font-medium bg-amber-50/50 dark:bg-slate-800/50 border border-amber-200/50 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 dark:focus:ring-blue-500 placeholder-amber-400/70 dark:placeholder-slate-500 text-amber-900 dark:text-slate-100 transition-all shadow-inner"
-        />
-        <div className="absolute right-14 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:block">
-           <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400 dark:text-slate-500 px-1.5 py-0.5 bg-amber-100/50 dark:bg-slate-700 rounded">N</span>
-        </div>
-        <button
-          type="submit"
-          disabled={adding || !newText.trim()}
-          className="flex-shrink-0 w-10.5 h-10.5 flex items-center justify-center bg-amber-400 hover:bg-amber-500 dark:bg-blue-600 dark:hover:bg-blue-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 text-amber-950 dark:text-white rounded-xl transition-all font-bold disabled:opacity-50"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-      </form>
-
-      {/* Notes list */}
-      {notes === undefined ? (
-        <LoadingSpinner />
-      ) : notes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 opacity-60">
-          <svg className="w-10 h-10 text-amber-300 dark:text-slate-600 mb-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-          </svg>
-          <p className="text-sm font-medium text-amber-800 dark:text-slate-400">Empty board</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2.5">
-          {notes.map((note) => {
-            const addedDate = new Date(note.createdAt).toLocaleDateString("en-GB", { day: 'numeric', month: 'short' });
-            return (
-              <div
-                key={note._id}
-                className={`flex flex-col gap-2 px-3.5 py-3 rounded-xl border group transition-all relative overflow-hidden ${
-                  note.completed
-                    ? "bg-slate-50 border-slate-100 opacity-50 dark:bg-slate-900/40 dark:border-slate-800 text-slate-500"
-                    : "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200/60 dark:from-slate-800 dark:to-slate-800 dark:border-slate-700 shadow-sm text-slate-800 dark:text-slate-200"
-                  }`}
-              >
-                {!note.completed && <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-amber-200/40 to-transparent dark:from-slate-600/40 opacity-70" style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} />}
-                
-                <div className="flex items-start gap-2.5 relative z-10">
-                  <button
-                    onClick={() => toggleNote({ id: note._id })}
-                    className={`flex-shrink-0 mt-0.5 w-4.5 h-4.5 mb-1 rounded-sm border-2 flex items-center justify-center transition-colors bg-white/50 dark:bg-slate-900/50 ${
-                      note.completed
-                        ? "bg-slate-300 dark:bg-slate-600 border-slate-300 dark:border-slate-600"
-                        : "border-amber-400/80 dark:border-slate-500 hover:bg-amber-100 dark:hover:bg-slate-700 hover:border-amber-500 dark:hover:border-slate-400"
-                      }`}
-                    style={{ width: 18, height: 18 }}
-                  >
-                    {note.completed && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
-  
-                  <p className={`flex-1 text-[13px] font-medium leading-relaxed min-w-0 break-words ${note.completed ? "line-through" : ""}`}>
-                    {note.text}
-                  </p>
-  
-                  <button
-                    onClick={() => removeNote({ id: note._id })}
-                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-1 text-amber-500 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-all bg-amber-100/50 hover:bg-red-100 dark:bg-slate-700/50 dark:hover:bg-red-900/40 rounded-md -mr-1 -mt-1"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between pl-7 pr-1 opacity-70">
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600/70 dark:text-slate-500">{addedDate}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </PanelCard>
-  );
-}
-
-// ── Shared sub-components ────────────────────────────────────────────────────
 function PanelCard({
   title, icon, badge, action, headerAction, isFullHeight = false, children,
 }: {
@@ -569,7 +392,6 @@ function PanelCard({
 }) {
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col overflow-hidden transition-all duration-200 ${isFullHeight ? "h-full" : ""}`}>
-      {/* Panel header */}
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900 w-full h-[60px] flex-none">
         <span className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg">{icon}</span>
         <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 tracking-tight">{title}</h2>
@@ -589,7 +411,6 @@ function PanelCard({
           </button>
         )}
       </div>
-      {/* Panel body */}
       <div className={`flex-1 p-5 overflow-y-auto ${!isFullHeight ? "max-h-[460px]" : "min-h-0"}`}>
         {children}
       </div>
@@ -610,7 +431,7 @@ function EmptyState({ icon, message, sub }: { icon: string; message: string; sub
     <div className="flex flex-col items-center justify-center py-12 text-center h-full">
       <div className="text-4xl mb-3 opacity-80 filter drop-shadow-sm grayscale-[30%]">{icon}</div>
       <p className="text-[15px] font-bold text-slate-600 dark:text-slate-300">{message}</p>
-      {sub && <p className="textxs font-medium text-slate-400 dark:text-slate-500 mt-1 max-w-[200px] leading-relaxed">{sub}</p>}
+      {sub && <p className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-1 max-w-[200px] leading-relaxed">{sub}</p>}
     </div>
   );
 }

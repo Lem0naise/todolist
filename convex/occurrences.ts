@@ -90,6 +90,12 @@ export const convertToTodo = mutation({
       });
     }
 
+    // Auto-assign module from parent event
+    let moduleId = undefined;
+    if (event.moduleId) {
+      moduleId = event.moduleId;
+    }
+
     // Create todo — clean title, readable date in description
     const humanDate = new Date(date + "T12:00:00").toLocaleDateString("en-GB", {
       weekday: "short", day: "numeric", month: "short",
@@ -104,6 +110,7 @@ export const convertToTodo = mutation({
       sourceOccurrenceId: occurrenceId,
       category: "lecture_catchup",
       createdAt: Date.now(),
+      moduleId,
     });
 
     // Link back
@@ -168,7 +175,7 @@ export const processMissedEvents = mutation({
               .unique();
 
             if (!existing) {
-              // Create todo for this missed event
+              // Create todo for this missed event (inherit module from parent event)
               const occId = await ctx.db.insert("occurrences", {
                 userId,
                 eventId: event._id,
@@ -185,6 +192,7 @@ export const processMissedEvents = mutation({
                 sourceOccurrenceId: occId,
                 category: "lecture_catchup",
                 createdAt: Date.now(),
+                moduleId: event.moduleId,
               });
               await ctx.db.patch(occId, { todoId });
               createdTodos.push(todoId);
@@ -203,6 +211,7 @@ export const processMissedEvents = mutation({
                 sourceOccurrenceId: existing._id,
                 category: "lecture_catchup",
                 createdAt: Date.now(),
+                moduleId: event.moduleId,
               });
               await ctx.db.patch(existing._id, { status: "todo", todoId });
               createdTodos.push(todoId);

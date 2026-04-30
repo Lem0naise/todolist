@@ -66,6 +66,7 @@ type TodayEvent = {
   location?: string;
   startTime: string;
   endTime?: string;
+  moduleName?: string;
   occurrence: {
     _id: Id<"occurrences">;
     status: "pending" | "done" | "todo";
@@ -103,19 +104,6 @@ export function TodayView({
   const isToday = selectedDate === todayStr;
   const isFuture = selectedDate > todayStr;
 
-  const aliasesQuery = useQuery(api.aliases.list);
-  const aliases = useLocalCache("aliases", aliasesQuery) || [];
-  
-  const aliasesMap = new Map<string, string>();
-  for (const a of aliases) {
-    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
-  }
-
-  function applyAlias(title: string): string {
-    const cleanTitle = title.replace(/^Missed:\s*/i, "");
-    return aliasesMap.get(cleanTitle.toLowerCase()) ?? cleanTitle;
-  }
-
   const liveEvents = useQuery(api.timetable.getForDate, {
     date: selectedDate,
     dayOfWeek: dateInfo.dayOfWeek,
@@ -137,7 +125,7 @@ export function TodayView({
     const newStatus = currentStatus === "done" ? "pending" : "done";
     await setStatus({ eventId: event._id, date: dateOverride ?? selectedDate, status: newStatus });
     if (selectedWeekEvent && selectedWeekEvent.event._id === event._id) {
-      setSelectedWeekEvent(null); // auto-close popover
+      setSelectedWeekEvent(null);
     }
   };
 
@@ -213,7 +201,6 @@ export function TodayView({
                <DayColumn 
                  key={day.date} day={day} todayStr={todayStr} currentTime={currentTime} 
                  onSelectEvent={(e: TodayEvent) => setSelectedWeekEvent({ event: e, date: day.date })}
-                 aliasesMap={aliasesMap}
                />
             ))}
           </div>
@@ -243,7 +230,6 @@ export function TodayView({
                     isUnresolvedPast={isUnresolvedPast}
                     onToggleDone={() => handleToggleDone(event)}
                     onMarkTodo={() => handleMarkTodo(event)}
-                    aliasedTitle={applyAlias(event.title)}
                   />
                 );
               })}
@@ -299,7 +285,6 @@ export function TodayView({
                         isUnresolvedPast={isUnresolvedPast}
                         onToggleDone={() => handleToggleDone(event, selectedWeekEvent.date)}
                         onMarkTodo={() => handleMarkTodo(event, selectedWeekEvent.date)}
-                        aliasedTitle={applyAlias(event.title)}
                       />
                     </div>
                   </div>
@@ -326,7 +311,6 @@ function EventCard({
   isUnresolvedPast,
   onToggleDone,
   onMarkTodo,
-  aliasedTitle,
 }: {
   event: TodayEvent;
   isDone: boolean;
@@ -334,7 +318,6 @@ function EventCard({
   isUnresolvedPast: boolean;
   onToggleDone: () => void;
   onMarkTodo: () => void;
-  aliasedTitle: string;
 }) {
   return (
     <div
@@ -367,8 +350,13 @@ function EventCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap mb-1">
             <span className={`font-bold text-[15px] ${isDone ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-900 dark:text-slate-100"}`}>
-              {aliasedTitle ?? event.title}
+              {event.title}
             </span>
+            {event.moduleName && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800/60 rounded font-bold uppercase tracking-wider truncate max-w-[120px]">
+                {event.moduleName}
+              </span>
+            )}
             {isUnresolvedPast && (
               <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800 ml-1">
                 Catch up?
@@ -419,22 +407,15 @@ function DayColumn({
   todayStr,
   currentTime,
   onSelectEvent,
-  aliasesMap,
 }: {
   day: { date: string; dayOfWeek: number; label: string; dateNum: number };
   todayStr: string;
   currentTime: string;
   onSelectEvent: (event: TodayEvent) => void;
-  aliasesMap: Map<string, string>;
 }) {
   const liveEvents = useQuery(api.timetable.getForDate, { date: day.date, dayOfWeek: day.dayOfWeek });
   const events = useLocalCache(`week:${day.date}`, liveEvents) as TodayEvent[] | null | undefined;
   const isToday = day.date === todayStr;
-
-  function applyAlias(title: string): string {
-    const cleanTitle = title.replace(/^Missed:\s*/i, "");
-    return aliasesMap?.get(cleanTitle.toLowerCase()) ?? cleanTitle;
-  }
 
   return (
     <div className={`flex-1 border-r border-slate-100 dark:border-slate-800 relative min-w-[100px] ${isToday ? "bg-blue-50/20 dark:bg-blue-900/10" : ""}`}>
@@ -472,7 +453,10 @@ function DayColumn({
                } ${isUnresolvedPast ? "animate-pulse shadow-md" : ""}`}
                style={{ top, height: Math.max(height, 24) }}
              >
-               <div className="text-[10px] font-bold truncate leading-tight mb-0.5">{applyAlias(event.title)}</div>
+               <div className="text-[10px] font-bold truncate leading-tight mb-0.5">{event.title}</div>
+               {event.moduleName && (
+                 <div className="text-[9px] truncate opacity-70 font-medium leading-none">{event.moduleName}</div>
+               )}
                {height >= 40 && event.location && <div className="text-[9px] truncate opacity-80 font-medium leading-none">{event.location}</div>}
              </button>
          );

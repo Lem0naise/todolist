@@ -8,10 +8,19 @@ export const list = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
-    return await ctx.db
+    const events = await ctx.db
       .query("timetableEvents")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
+    // Enrich with module name
+    return await Promise.all(
+      events.map(async (event) => {
+        const moduleName = event.moduleId
+          ? (await ctx.db.get(event.moduleId))?.name as string | undefined
+          : undefined;
+        return { ...event, moduleName };
+      })
+    );
   },
 });
 
@@ -59,11 +68,14 @@ export const getForDate = query({
       )
       .collect();
 
-    // Enrich each event: include occurrence + linked todo data when status is "todo"
+    // Enrich each event: include occurrence + linked todo data + module name
     return await Promise.all(
       todayEvents.map(async (event) => {
+        const moduleName = event.moduleId
+          ? (await ctx.db.get(event.moduleId))?.name as string | undefined
+          : undefined;
         const occ = occurrences.find((o) => o.eventId === event._id) ?? null;
-        if (!occ) return { ...event, occurrence: null };
+        if (!occ) return { ...event, moduleName, occurrence: null };
 
         let linkedTodo = undefined;
         if (occ.status === "todo" && occ.todoId) {
@@ -80,7 +92,7 @@ export const getForDate = query({
           }
         }
 
-        return { ...event, occurrence: { ...occ, linkedTodo } };
+        return { ...event, moduleName, occurrence: { ...occ, linkedTodo } };
       })
     );
   },
@@ -127,6 +139,7 @@ export const create = mutation({
     source: v.union(v.literal("ical"), v.literal("manual")),
     icalFeedId: v.optional(v.id("icalFeeds")),
     icalUid: v.optional(v.string()),
+    moduleId: v.optional(v.id("modules")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);

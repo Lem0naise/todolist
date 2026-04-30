@@ -8,13 +8,12 @@
  * @module
  */
 
-import type * as aliases from "../aliases.js";
 import type * as auth from "../auth.js";
-import type * as dailyNotes from "../dailyNotes.js";
 import type * as http from "../http.js";
 import type * as icsImport from "../icsImport.js";
 import type * as icsImportInternal from "../icsImportInternal.js";
 import type * as ignored from "../ignored.js";
+import type * as modules from "../modules.js";
 import type * as occurrences from "../occurrences.js";
 import type * as timetable from "../timetable.js";
 import type * as todos from "../todos.js";
@@ -26,13 +25,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  aliases: typeof aliases;
   auth: typeof auth;
-  dailyNotes: typeof dailyNotes;
   http: typeof http;
   icsImport: typeof icsImport;
   icsImportInternal: typeof icsImportInternal;
   ignored: typeof ignored;
+  modules: typeof modules;
   occurrences: typeof occurrences;
   timetable: typeof timetable;
   todos: typeof todos;

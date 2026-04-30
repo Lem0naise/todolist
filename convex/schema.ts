@@ -13,6 +13,13 @@ export default defineSchema({
     lastSynced: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
+  // User-defined modules for grouping events and tasks
+  modules: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    patterns: v.array(v.string()),
+  }).index("by_user", ["userId"]),
+
   // Individual timetable events (recurring or one-off)
   timetableEvents: defineTable({
     userId: v.id("users"),
@@ -33,6 +40,7 @@ export default defineSchema({
     source: v.union(v.literal("ical"), v.literal("manual")),
     icalFeedId: v.optional(v.id("icalFeeds")),
     icalUid: v.optional(v.string()), // for deduplication
+    moduleId: v.optional(v.id("modules")),
   })
     .index("by_user", ["userId"])
     .index("by_feed", ["icalFeedId"]),
@@ -58,13 +66,6 @@ export default defineSchema({
   ignoredEventTitles: defineTable({
     userId: v.id("users"),
     title: v.string(),
-  }).index("by_user", ["userId"]),
-
-  // Subject aliases to show short acronyms instead of long event titles
-  subjectAliases: defineTable({
-    userId: v.id("users"),
-    originalTitle: v.string(),
-    alias: v.string(),
   }).index("by_user", ["userId"]),
 
   // Todos (manually created or auto-generated from missed events)
@@ -96,19 +97,9 @@ export default defineSchema({
     linkedEventId: v.optional(v.id("timetableEvents")),
     // Manual sort order within each category (set by drag-to-reorder)
     manualOrder: v.optional(v.number()),
+    // Module assignment (auto from linked event, or manual override)
+    moduleId: v.optional(v.id("modules")),
   })
     .index("by_user", ["userId"])
     .index("by_user_completed", ["userId", "completed"]),
-
-  // Personal daily notes — lightweight scratch pad for "what I want to do today"
-  dailyNotes: defineTable({
-    userId: v.id("users"),
-    date: v.string(),              // YYYY-MM-DD
-    text: v.string(),
-    targetTime: v.optional(v.string()), // "HH:MM"
-    completed: v.boolean(),
-    order: v.number(),             // insertion order
-    createdAt: v.number(),
-  })
-    .index("by_user_date", ["userId", "date"]),
 });

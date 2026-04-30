@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Id } from "./_generated/dataModel";
 
 const CATEGORY_VALIDATOR = v.optional(v.union(
   v.literal("lecture_catchup"),
@@ -13,6 +14,29 @@ const SUBTASK_VALIDATOR = v.optional(v.array(v.object({
   title: v.string(),
   done: v.boolean(),
 })));
+
+async function matchModuleByTitle(
+  ctx: any,
+  userId: Id<"users">,
+  title: string
+): Promise<Id<"modules"> | undefined> {
+  const modules = await ctx.db
+    .query("modules")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .collect();
+  for (const mod of modules) {
+    for (const pattern of mod.patterns) {
+      try {
+        if (new RegExp(pattern, "i").test(title)) {
+          return mod._id;
+        }
+      } catch {
+        // Skip invalid regex
+      }
+    }
+  }
+  return undefined;
+}
 
 export const list = query({
   args: { includeCompleted: v.optional(v.boolean()) },
@@ -50,7 +74,7 @@ export const list = query({
       return a.createdAt - b.createdAt;
     });
 
-    // Join: occurrence date + linked event title
+    // Join: occurrence date + linked event title + module name
     return await Promise.all(
       sorted.map(async (todo) => {
         const sourceOccurrenceDate = todo.sourceOccurrenceId
@@ -59,7 +83,10 @@ export const list = query({
         const linkedEventTitle = todo.linkedEventId
           ? (await ctx.db.get(todo.linkedEventId))?.title as string | undefined
           : undefined;
-        return { ...todo, sourceOccurrenceDate, linkedEventTitle };
+        const moduleName = todo.moduleId
+          ? (await ctx.db.get(todo.moduleId))?.name as string | undefined
+          : undefined;
+        return { ...todo, sourceOccurrenceDate, linkedEventTitle, moduleName };
       })
     );
   },
@@ -76,12 +103,16 @@ export const create = mutation({
     subTasks: SUBTASK_VALIDATOR,
     manualProgress: v.optional(v.number()),
     linkedEventId: v.optional(v.id("timetableEvents")),
+    moduleId: v.optional(v.id("modules")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
+    // Auto-match module if not explicitly provided
+    const moduleId = args.moduleId ?? await matchModuleByTitle(ctx, userId, args.title);
     return await ctx.db.insert("todos", {
       ...args,
+      moduleId,
       userId,
       completed: false,
       createdAt: Date.now(),
@@ -100,12 +131,18 @@ export const update = mutation({
     subTasks: SUBTASK_VALIDATOR,
     manualProgress: v.optional(v.number()),
     linkedEventId: v.optional(v.id("timetableEvents")),
+    moduleId: v.optional(v.id("modules")),
   },
   handler: async (ctx, { id, ...updates }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const todo = await ctx.db.get(id);
     if (!todo || todo.userId !== userId) throw new Error("Not found");
+    // If title changed and no explicit moduleId, re-match
+    if (updates.title && updates.moduleId === undefined) {
+      const newModuleId = await matchModuleByTitle(ctx, userId, updates.title);
+      updates.moduleId = newModuleId;
+    }
     await ctx.db.patch(id, updates);
   },
 });

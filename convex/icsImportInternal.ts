@@ -2,6 +2,7 @@
 // so it can be called from the Node.js action in icsImport.ts.
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 export const storeIcsData = internalMutation({
   args: {
@@ -53,8 +54,29 @@ export const storeIcsData = internalMutation({
       }
     })();
 
-    // Insert events
+    // Insert events, auto-assigning modules by pattern matching
+    const modules = await ctx.db
+      .query("modules")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    function matchModule(title: string): string | undefined {
+      for (const mod of modules) {
+        for (const pattern of mod.patterns) {
+          try {
+            if (new RegExp(pattern, "i").test(title)) {
+              return mod._id;
+            }
+          } catch {
+            // Skip invalid regex
+          }
+        }
+      }
+      return undefined;
+    }
+
     for (const event of events) {
+      const moduleId = matchModule(event.title) as Id<"modules"> | undefined;
       await ctx.db.insert("timetableEvents", {
         userId,
         title: event.title,
@@ -70,6 +92,7 @@ export const storeIcsData = internalMutation({
         source: "ical",
         icalFeedId: feedId,
         icalUid: event.uid,
+        moduleId,
       });
     }
 

@@ -5,13 +5,13 @@ import { api } from "../convex/_generated/api";
 import { Auth } from "./components/Auth";
 import { Nav } from "./components/Nav";
 import type { Tab } from "./components/Nav";
-import { DashboardView } from "./components/DashboardView";
+import { CombinedView } from "./components/CombinedView";
 import { TodayView } from "./components/TodayView";
 import { TodosView } from "./components/TodosView";
 import { SettingsView } from "./components/SettingsView";
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [activeTab, setActiveTab] = useState<Tab>("combined");
   const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
 
@@ -52,8 +52,8 @@ function MainApp() {
           lg+: offset by wide sidebar (w-52)
           mobile: extra bottom padding for bottom nav */}
       <div className="sm:pl-14 pb-20 sm:pb-0">
-        {activeTab === "dashboard" && (
-          <DashboardView
+        {activeTab === "combined" && (
+          <CombinedView
             onGoToTodos={() => setActiveTab("todos")}
             onGoToSchedule={() => setActiveTab("today")}
           />

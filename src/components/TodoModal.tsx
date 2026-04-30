@@ -18,6 +18,7 @@ interface Props {
     subTasks?: SubTask[];
     manualProgress?: number;
     linkedEventId?: Id<"timetableEvents">;
+    moduleId?: Id<"modules">;
   };
 }
 
@@ -29,6 +30,7 @@ export function TodoModal({ onClose, editTodo }: Props) {
   const createTodo = useMutation(api.todos.create);
   const updateTodo = useMutation(api.todos.update);
   const timetableEvents = useQuery(api.timetable.list);
+  const modules = useQuery(api.modules.list);
 
   const [title, setTitle] = useState(editTodo?.title ?? "");
   const [description, setDescription] = useState(editTodo?.description ?? "");
@@ -39,6 +41,7 @@ export function TodoModal({ onClose, editTodo }: Props) {
   const [newSubTask, setNewSubTask] = useState("");
   const [manualProgress, setManualProgress] = useState(editTodo?.manualProgress ?? 0);
   const [linkedEventId, setLinkedEventId] = useState<string>(editTodo?.linkedEventId ?? "");
+  const [moduleId, setModuleId] = useState<string>(editTodo?.moduleId ?? "");
   const [loading, setLoading] = useState(false);
 
   const addSubTask = () => {
@@ -62,6 +65,7 @@ export function TodoModal({ onClose, editTodo }: Props) {
         : {};
 
       const eventId = linkedEventId ? (linkedEventId as Id<"timetableEvents">) : undefined;
+      const modId = moduleId ? (moduleId as Id<"modules">) : undefined;
 
       if (editTodo) {
         await updateTodo({
@@ -72,6 +76,7 @@ export function TodoModal({ onClose, editTodo }: Props) {
           highPriority,
           category,
           linkedEventId: eventId,
+          moduleId: modId,
           ...extras,
         });
       } else {
@@ -82,6 +87,7 @@ export function TodoModal({ onClose, editTodo }: Props) {
           highPriority,
           category,
           linkedEventId: eventId,
+          moduleId: modId,
           ...extras,
         });
       }
@@ -99,7 +105,6 @@ export function TodoModal({ onClose, editTodo }: Props) {
 
   // Unique list of classes by title for the dropdown
   const uniqueClassTitles = Array.from(new Set((timetableEvents ?? []).map(e => e.title))).sort();
-  // We'll just bind one of the event IDs that has this title
   const getClassId = (title: string) => timetableEvents?.find(e => e.title === title)?._id;
   const currentClassTitle = timetableEvents?.find(e => e._id === linkedEventId)?.title ?? "";
 
@@ -165,6 +170,19 @@ export function TodoModal({ onClose, editTodo }: Props) {
 
           <div className="flex gap-3">
             <div className="flex-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Module</label>
+              <select
+                value={moduleId}
+                onChange={(e) => setModuleId(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:text-slate-200 appearance-none transition-all"
+              >
+                <option value="">Auto / None</option>
+                {(modules ?? []).map((mod: { _id: Id<"modules">; name: string }) => (
+                  <option key={mod._id} value={mod._id}>{mod.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Link to Class</label>
               <select
                 value={currentClassTitle}
@@ -180,15 +198,16 @@ export function TodoModal({ onClose, editTodo }: Props) {
                 ))}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Due date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:text-slate-200 transition-all"
-              />
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Due date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full px-3 py-2 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:text-slate-200 transition-all"
+            />
           </div>
 
           {category === "project" && (

@@ -43,6 +43,8 @@ type Todo = {
   linkedEventId?: Id<"timetableEvents">;
   linkedEventTitle?: string;
   manualOrder?: number;
+  moduleId?: Id<"modules">;
+  moduleName?: string;
 };
 
 function formatShortDate(dateStr: string): string {
@@ -122,8 +124,13 @@ function effectiveCategory(todo: Todo): Category {
 const CATEGORY_META: Record<Category, { label: string; icon: string; color: string; border: string; bg: string }> = {
   project: { label: "Projects", icon: "📋", color: "text-purple-600 dark:text-purple-400", border: "border-purple-100 dark:border-purple-900/50", bg: "bg-purple-50 dark:bg-purple-900/30" },
   lecture_catchup: { label: "Lecture Catchup", icon: "📚", color: "text-blue-600 dark:text-blue-400", border: "border-blue-100 dark:border-blue-900/50", bg: "bg-blue-50 dark:bg-blue-900/30" },
-
   other: { label: "Other", icon: "✅", color: "text-slate-500 dark:text-slate-400", border: "border-slate-100 dark:border-slate-800", bg: "bg-slate-50 dark:bg-slate-800" },
+};
+
+type Module = {
+  _id: Id<"modules">;
+  name: string;
+  patterns: string[];
 };
 
 export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: string) => void }) {
@@ -137,60 +144,16 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     lecture_catchup: "dueDateAsc",
     other: "manual",
   });
+  const [moduleFilter, setModuleFilter] = useState<string>("all");
 
-  const aliasesQuery = useQuery(api.aliases.list);
-  const aliases = useLocalCache("aliases", aliasesQuery) || [];
-  
-  const aliasesMap = new Map<string, string>();
-  for (const a of aliases) {
-    aliasesMap.set(a.originalTitle.toLowerCase(), a.alias);
-  }
+  const modulesQuery = useQuery(api.modules.list);
+  const modules = useLocalCache<Module[]>("modules", modulesQuery) as Module[] | null | undefined;
 
-  function getModuleKey(todo: Todo): string {
-    const cleanTitle = todo.title.replace(/^Missed:\s*/i, "");
-    const linkedTitle = todo.linkedEventTitle?.trim() || "";
-    
-    // Attempt to extract module code (e.g. COMP2322)
-    const moduleCodeMatch = (linkedTitle || cleanTitle).match(/[a-zA-Z]{2,4}\s*\d{3,4}/);
-    const moduleCode = moduleCodeMatch ? moduleCodeMatch[0].toUpperCase().replace(/\s+/g, '') : null;
-
-    // Check aliases in order of preference
-    if (moduleCode && aliasesMap.has(moduleCode.toLowerCase())) {
-      return aliasesMap.get(moduleCode.toLowerCase())!;
+  const moduleMap = new Map<string, Module>();
+  if (modules) {
+    for (const m of modules) {
+      moduleMap.set(m._id, m);
     }
-    if (linkedTitle && aliasesMap.has(linkedTitle.toLowerCase())) {
-      return aliasesMap.get(linkedTitle.toLowerCase())!;
-    }
-    if (aliasesMap.has(cleanTitle.toLowerCase())) {
-      return aliasesMap.get(cleanTitle.toLowerCase())!;
-    }
-    
-    // Fallbacks
-    if (moduleCode) return moduleCode;
-    if (linkedTitle) return linkedTitle;
-    
-    return cleanTitle;
-  }
-
-  function getDisplayTitle(todo: Todo, groupKey?: string): string {
-    let cleanTitle = todo.title.replace(/^Missed:\s*/i, "");
-    
-    if (groupKey) {
-      const groupKeyLower = groupKey.toLowerCase();
-      const moduleCodeMatch = cleanTitle.match(/[a-zA-Z]{2,4}\s*\d{3,4}/);
-      const moduleCode = moduleCodeMatch ? moduleCodeMatch[0] : null;
-      
-      // If the title starts with the module code and the group key is the module code or its alias
-      if (moduleCode && (groupKeyLower === moduleCode.toLowerCase() || aliasesMap.get(moduleCode.toLowerCase())?.toLowerCase() === groupKeyLower)) {
-        cleanTitle = cleanTitle.substring(cleanTitle.indexOf(moduleCode) + moduleCode.length).trim();
-        if (cleanTitle.startsWith("-")) cleanTitle = cleanTitle.substring(1).trim();
-      } else if (cleanTitle.toLowerCase().startsWith(groupKeyLower)) {
-        cleanTitle = cleanTitle.substring(groupKey.length).trim();
-        if (cleanTitle.startsWith("-")) cleanTitle = cleanTitle.substring(1).trim();
-      }
-    }
-    
-    return cleanTitle || todo.title.replace(/^Missed:\s*/i, ""); // Fallback if we accidentally cleared it all
   }
 
   const liveTodos = useQuery(api.todos.list, { includeCompleted: true });
@@ -238,8 +201,13 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
 
   const CATEGORY_ORDER: Category[] = ["project", "other", "lecture_catchup"];
 
-  const pending = todos?.filter((t) => !t.completed) ?? [];
+  let pending = todos?.filter((t) => !t.completed) ?? [];
   const done = todos?.filter((t) => t.completed) ?? [];
+
+  // Apply module filter
+  if (moduleFilter !== "all") {
+    pending = pending.filter((t) => t.moduleId === moduleFilter);
+  }
 
   const groupedPending: Record<Category, Todo[]> = {
     project: [],
@@ -262,6 +230,12 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     }
   }
 
+  // Build unique module names from pending todos
+  const usedModuleIds = new Set<string>();
+  for (const t of pending) {
+    if (t.moduleId) usedModuleIds.add(t.moduleId);
+  }
+
   return (
     <div className="p-4 max-w-2xl mx-auto pb-24">
       <div className="flex items-center justify-between mb-6">
@@ -282,6 +256,36 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
           <span className="hidden sm:inline-block ml-1 opacity-50 text-[10px] uppercase font-bold tracking-wider">T</span>
         </button>
       </div>
+
+      {/* Module filter */}
+      {modules && usedModuleIds.size > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Filter by module:</span>
+          <button
+            onClick={() => setModuleFilter("all")}
+            className={`text-[10px] px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider transition-colors ${
+              moduleFilter === "all"
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
+            All
+          </button>
+          {(modules as Module[]).filter(m => usedModuleIds.has(m._id)).map((mod) => (
+            <button
+              key={mod._id}
+              onClick={() => setModuleFilter(mod._id)}
+              className={`text-[10px] px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider transition-colors ${
+                moduleFilter === mod._id
+                  ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-300 dark:ring-indigo-600"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {mod.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {todos === undefined ? (
         <div className="flex items-center justify-center h-48">
@@ -359,15 +363,19 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                     <div className="space-y-4 mt-2">
                       {Object.entries(
                         items.reduce((acc, item) => {
-                          const subject = getModuleKey(item);
-                          if (!acc[subject]) acc[subject] = [];
-                          acc[subject].push(item);
+                          const key = item.moduleName || "Other";
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(item);
                           return acc;
                         }, {} as Record<string, Todo[]>)
-                      ).sort(([a], [b]) => a.localeCompare(b)).map(([subject, subjectItems]) => (
-                        <div key={subject} className="space-y-2 ml-2 pl-3 border-l-2 border-blue-100 dark:border-blue-900/30">
-                          <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300">{subject}</h4>
-                          {subjectItems.map((todo) => (
+                      ).sort(([a], [b]) => {
+                        if (a === "Other") return 1;
+                        if (b === "Other") return -1;
+                        return a.localeCompare(b);
+                      }).map(([moduleName, moduleItems]) => (
+                        <div key={moduleName} className="space-y-2 ml-2 pl-3 border-l-2 border-indigo-100 dark:border-indigo-900/30">
+                          <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-300">{moduleName}</h4>
+                          {moduleItems.map((todo) => (
                             <SortableTodoItem
                               key={todo._id}
                               todo={todo}
@@ -390,7 +398,6 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                               }}
                               onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                               isCatchup={true}
-                              aliasedTitle={getDisplayTitle(todo, subject)}
                             />
                           ))}
                         </div>
@@ -430,7 +437,6 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                             }}
                             onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                             isCatchup={false}
-                            aliasedTitle={getDisplayTitle(todo)}
                           />
                         ))}
                       </div>
@@ -479,7 +485,6 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                             }}
                             onProgressChange={(val) => updateProgress({ id: todo._id, manualProgress: val })}
                             isCatchup={effectiveCategory(todo) === "lecture_catchup"}
-                            aliasedTitle={getDisplayTitle(todo)}
                           />
                         ))}
                       </div>
@@ -510,7 +515,6 @@ function SortableTodoItem(props: {
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
   isCatchup?: boolean;
-  aliasedTitle?: string;
 }) {
   const {
     attributes,
@@ -547,7 +551,6 @@ function TodoItem({
   onProgressChange,
   dragHandleProps,
   isCatchup,
-  aliasedTitle,
 }: {
   todo: Todo;
   expanded: boolean;
@@ -560,7 +563,6 @@ function TodoItem({
   onProgressChange: (val: number) => void;
   dragHandleProps?: Record<string, unknown>;
   isCatchup?: boolean;
-  aliasedTitle?: string;
 }) {
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
   const hasDetails = !!(todo.description);
@@ -607,10 +609,17 @@ function TodoItem({
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`text-sm font-bold tracking-tight ${todo.completed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-900 dark:text-slate-100"}`}>
-              {aliasedTitle ?? todo.title}
+              {todo.title}
             </span>
             {todo.highPriority && !todo.completed && (
               <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800/50 rounded font-bold uppercase tracking-wider">High</span>
+            )}
+
+            {/* Module chip */}
+            {todo.moduleName && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800/60 rounded font-bold uppercase tracking-wider truncate max-w-[120px]" title={todo.moduleName}>
+                {todo.moduleName}
+              </span>
             )}
 
             {/* Linked class chip */}
