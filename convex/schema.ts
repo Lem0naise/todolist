@@ -18,6 +18,7 @@ export default defineSchema({
     userId: v.id("users"),
     name: v.string(),
     patterns: v.array(v.string()),
+    color: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 
   // Individual timetable events (recurring or one-off)

@@ -1,5 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Caveat:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DynaPuff:wght@400..700&display=swap');
+
 @import "tailwindcss";
+
+@theme {
+  --font-hand: 'Caveat', cursive;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --font-main: 'DynaPuff', system-ui;
+
+  --color-cream: #fdfbf7;
+  --color-cream-50: #fefdfb;
+  --color-cream-100: #fdf9f0;
+  --color-cream-200: #faf2e2;
+  --color-cream-300: #f5e6cc;
+  --color-rose: #f4a7b9;
+  --color-rose-50: #fdf2f5;
+  --color-rose-100: #fce7ed;
+  --color-rose-200: #f9cad6;
+  --color-rose-300: #f4a7b9;
+  --color-rose-500: #e7768f;
+  --color-rose-600: #d4526e;
+  --color-lavender: #c4b5e3;
+  --color-lavender-50: #f8f6fc;
+  --color-lavender-100: #efeaf8;
+  --color-lavender-200: #e0d6f2;
+  --color-lavender-300: #c4b5e3;
+  --color-lavender-500: #8b74c9;
+  --color-lavender-600: #6d52b5;
+  --color-mint: #98d9c2;
+  --color-mint-50: #f4fbf8;
+  --color-mint-100: #e6f6ef;
+  --color-mint-200: #c9ecdd;
+  --color-mint-300: #98d9c2;
+  --color-mint-500: #50b894;
+  --color-mint-600: #359e7b;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 * {
@@ -8,11 +45,41 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #fdfbf7;
+  color: #4a3728;
+}
+
+body.dark, .dark body {
+  background-color: #1a1720;
+  color: #e2d9e8;
 }
 
 #root {
   min-height: 100svh;
 }
+
+/* Cute scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e8d5f0; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #d4b8e6; }
+
+.dark ::-webkit-scrollbar-thumb { background: #3d2a4a; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #543a65; }
+
+/* Smooth transitions for dark/light */
+.dark body, body { transition: background-color 0.2s ease, color 0.2s ease; }
+
+/* Cute focus ring */
+*:focus-visible {
+  outline: 2px solid #e8a0bf;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection color */
+::selection { background: #fce7ed; color: #4a3728; }
+.dark ::selection { background: #5c3d5e; color: #f0e4f4; }

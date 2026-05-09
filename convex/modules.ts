@@ -19,11 +19,12 @@ export const create = mutation({
   args: {
     name: v.string(),
     patterns: v.array(v.string()),
+    color: v.optional(v.string()),
   },
-  handler: async (ctx, { name, patterns }) => {
+  handler: async (ctx, { name, patterns, color }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
-    return await ctx.db.insert("modules", { userId, name, patterns });
+    return await ctx.db.insert("modules", { userId, name, patterns, color });
   },
 });
 
@@ -32,13 +33,15 @@ export const update = mutation({
     id: v.id("modules"),
     name: v.optional(v.string()),
     patterns: v.optional(v.array(v.string())),
+    color: v.optional(v.string()),
   },
   handler: async (ctx, { id, ...updates }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const mod = await ctx.db.get(id);
     if (!mod || mod.userId !== userId) throw new Error("Not found");
-    await ctx.db.patch(id, updates);
+    const clean = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+    await ctx.db.patch(id, clean);
   },
 });
 

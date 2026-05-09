@@ -29,32 +29,32 @@ export function SettingsView({ onSignOut }: { onSignOut: () => void }) {
   const [activeTab, setActiveTab] = useState<"timetable" | "modules" | "account">("timetable");
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-slate-900">Settings</h2>
+    <div className="p-3 max-w-2xl mx-auto pb-24">
+      <div className="mb-5">
+        <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight">settings</h2>
       </div>
 
-      <div className="flex rounded-lg bg-slate-100 p-1 mb-6">
+      <div className="flex rounded-lg bg-cream-100 p-1 mb-5">
         <button
           onClick={() => setActiveTab("timetable")}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            activeTab === "timetable" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+          className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
+            activeTab === "timetable" ? "bg-white text-stone-700 shadow-sm" : "text-stone-400"
           }`}
         >
           Timetable
         </button>
         <button
           onClick={() => setActiveTab("modules")}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            activeTab === "modules" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+          className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
+            activeTab === "modules" ? "bg-white text-stone-700 shadow-sm" : "text-stone-400"
           }`}
         >
           Modules
         </button>
         <button
           onClick={() => setActiveTab("account")}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            activeTab === "account" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+          className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
+            activeTab === "account" ? "bg-white text-stone-700 shadow-sm" : "text-stone-400"
           }`}
         >
           Account
@@ -101,10 +101,10 @@ function TimetableSettings() {
       {/* ICS Import */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-700">Calendar feeds (iCAL)</h3>
+          <h3 className="text-sm font-bold text-stone-600">Calendar feeds (iCAL)</h3>
           <button
             onClick={() => setShowIcsForm(!showIcsForm)}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+            className="text-xs text-rose-500 hover:text-rose-600 font-bold"
           >
             + Add feed
           </button>
@@ -115,30 +115,30 @@ function TimetableSettings() {
         )}
 
         {feeds == null ? (
-          <div className="text-sm text-slate-400">Loading...</div>
+          <div className="text-sm text-stone-400">Loading...</div>
         ) : feeds.length === 0 ? (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-stone-400">
             No feeds yet. Add your university timetable iCAL link.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {feeds.map((feed) => (
               <div
                 key={feed._id}
-                className="flex items-start justify-between gap-2 bg-slate-50 rounded-lg p-3 border border-slate-200"
+                className="flex items-start justify-between gap-2 bg-cream-50 rounded-lg p-3 border border-cream-200"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{feed.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{feed.url}</p>
+                  <p className="text-sm font-bold text-stone-700 truncate">{feed.name}</p>
+                  <p className="text-xs text-stone-400 truncate">{feed.url}</p>
                   {feed.lastSynced && (
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-stone-400">
                       Synced {new Date(feed.lastSynced).toLocaleDateString()}
                     </p>
                   )}
                 </div>
                 <button
                   onClick={() => handleDeleteFeed(feed)}
-                  className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
+                  className="flex-shrink-0 text-stone-300 hover:text-rose-500 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -153,10 +153,10 @@ function TimetableSettings() {
       {/* Manual Events */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-700">Manual events</h3>
+          <h3 className="text-sm font-bold text-stone-600">Manual events</h3>
           <button
             onClick={() => setShowManualForm(!showManualForm)}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+            className="text-xs text-rose-500 hover:text-rose-600 font-bold"
           >
             + Add event
           </button>
@@ -167,17 +167,17 @@ function TimetableSettings() {
         )}
 
         {manualEvents.length === 0 ? (
-          <p className="text-sm text-slate-400">No manually added events.</p>
+          <p className="text-sm text-stone-400">No manually added events.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {manualEvents.map((event) => (
               <div
                 key={event._id}
-                className="flex items-start justify-between gap-2 bg-slate-50 rounded-lg p-3 border border-slate-200"
+                className="flex items-start justify-between gap-2 bg-cream-50 rounded-lg p-3 border border-cream-200"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{event.title}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-sm font-bold text-stone-700">{event.title}</p>
+                  <p className="text-xs text-stone-400">
                     {event.isRecurring
                       ? `Every ${DAYS[event.dayOfWeek ?? 0]} at ${event.startTime}`
                       : `${event.specificDate} at ${event.startTime}`}
@@ -186,7 +186,7 @@ function TimetableSettings() {
                 </div>
                 <button
                   onClick={() => removeEvent({ id: event._id })}
-                  className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
+                  className="flex-shrink-0 text-stone-300 hover:text-rose-500 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -202,8 +202,8 @@ function TimetableSettings() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-700">Ignored event titles</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Events matching these titles are hidden everywhere and won't generate todos</p>
+            <h3 className="text-sm font-bold text-stone-600">Ignored event titles</h3>
+            <p className="text-xs text-stone-400 mt-0.5">Events matching these titles are hidden and won't generate todos</p>
           </div>
         </div>
 
@@ -226,32 +226,32 @@ function TimetableSettings() {
             value={newIgnoredTitle}
             onChange={(e) => setNewIgnoredTitle(e.target.value)}
             placeholder="e.g. Break"
-            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 text-stone-700 placeholder-stone-300"
           />
           <button
             type="submit"
             disabled={addingIgnored || !newIgnoredTitle.trim()}
-            className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg transition-colors"
+            className="px-3 py-2 text-sm text-white bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 rounded-lg transition-colors font-bold"
           >
             Add
           </button>
         </form>
 
         {ignoredTitles == null ? (
-          <div className="text-sm text-slate-400">Loading...</div>
+          <div className="text-sm text-stone-400">Loading...</div>
         ) : ignoredTitles.length === 0 ? (
-          <p className="text-sm text-slate-400">No ignored titles yet.</p>
+          <p className="text-sm text-stone-400">No ignored titles yet.</p>
         ) : (
           <div className="space-y-1.5">
             {ignoredTitles.map((item) => (
               <div
                 key={item._id}
-                className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+                className="flex items-center justify-between gap-2 bg-cream-50 rounded-lg px-3 py-2 border border-cream-200"
               >
-                <span className="text-sm text-slate-700">{item.title}</span>
+                <span className="text-sm text-stone-600">{item.title}</span>
                 <button
                   onClick={() => removeIgnored({ id: item._id })}
-                  className="flex-shrink-0 text-slate-300 hover:text-red-400 transition-colors"
+                  className="flex-shrink-0 text-stone-300 hover:text-rose-500 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -264,9 +264,9 @@ function TimetableSettings() {
       </section>
 
       {/* Tips */}
-      <section className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-        <h4 className="text-xs font-semibold text-blue-800 mb-2">How to get your iCAL link</h4>
-        <ul className="space-y-1 text-xs text-blue-700">
+      <section className="bg-rose-50 rounded-xl p-4 border border-rose-100">
+        <h4 className="text-xs font-bold text-rose-600 mb-2">How to get your iCAL link</h4>
+        <ul className="space-y-1 text-xs text-rose-500">
           <li><strong>Outlook/Office 365:</strong> Calendar → Share → Get a link → View only</li>
           <li><strong>Google Calendar:</strong> Settings → your calendar → Integrate → Secret address in iCal format</li>
           <li><strong>Timetable systems:</strong> Look for "Export" or "Subscribe" in your uni's timetable portal</li>
@@ -306,44 +306,44 @@ function IcsImportForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-4 mb-3 space-y-3">
+    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-cream-200 p-4 mb-3 space-y-3">
       <div>
-        <label className="block text-xs text-slate-500 mb-1">Feed name</label>
+        <label className="block text-xs text-stone-400 mb-1">Feed name</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Uni Timetable"
-          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
         />
       </div>
       <div>
-        <label className="block text-xs text-slate-500 mb-1">iCAL URL</label>
+        <label className="block text-xs text-stone-400 mb-1">iCAL URL</label>
         <input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
           required
-          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
         />
       </div>
       {successCount !== null && (
-        <p className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+        <p className="text-xs text-mint-600 bg-mint-50 px-3 py-2 rounded-lg">
           Imported {successCount} events successfully!
         </p>
       )}
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+        <p className="text-xs text-rose-500 bg-rose-50 px-3 py-2 rounded-lg">{error}</p>
       )}
       <div className="flex gap-2">
-        <button type="button" onClick={onDone} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg">
+        <button type="button" onClick={onDone} className="flex-1 py-2 text-sm text-stone-500 bg-slate-100 rounded-lg">
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg"
+          className="flex-1 py-2 text-sm text-white bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 rounded-lg"
         >
           {loading ? "Importing..." : "Import"}
         </button>
@@ -397,47 +397,47 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-4 mb-3 space-y-3">
+    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-cream-200 p-4 mb-3 space-y-3">
       <div>
-        <label className="block text-xs text-slate-500 mb-1">Event title</label>
+        <label className="block text-xs text-stone-400 mb-1">Event title</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Maths Lecture"
           required
-          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
         />
       </div>
 
       <div>
-        <label className="block text-xs text-slate-500 mb-1">Location (optional)</label>
+        <label className="block text-xs text-stone-400 mb-1">Location (optional)</label>
         <input
           type="text"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           placeholder="e.g. Room 101"
-          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
         />
       </div>
 
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className="block text-xs text-slate-500 mb-1">Start</label>
+          <label className="block text-xs text-stone-400 mb-1">Start</label>
           <input
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
           />
         </div>
         <div className="flex-1">
-          <label className="block text-xs text-slate-500 mb-1">End</label>
+          <label className="block text-xs text-stone-400 mb-1">End</label>
           <input
             type="time"
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
           />
         </div>
       </div>
@@ -447,7 +447,7 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
           type="button"
           onClick={() => setIsRecurring(true)}
           className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-            isRecurring ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-slate-200 text-slate-400"
+            isRecurring ? "bg-rose-50 border-rose-200 text-rose-500" : "bg-white border-cream-200 text-stone-400"
           }`}
         >
           Weekly recurring
@@ -456,7 +456,7 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
           type="button"
           onClick={() => setIsRecurring(false)}
           className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-            !isRecurring ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-slate-200 text-slate-400"
+            !isRecurring ? "bg-rose-50 border-rose-200 text-rose-500" : "bg-white border-cream-200 text-stone-400"
           }`}
         >
           One-off
@@ -466,7 +466,7 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
       {isRecurring ? (
         <>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Day of week</label>
+            <label className="block text-xs text-stone-400 mb-1">Day of week</label>
             <div className="flex gap-1">
               {DAYS.map((d, i) => (
                 <button
@@ -475,8 +475,8 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
                   onClick={() => setDayOfWeek(i)}
                   className={`flex-1 py-1 text-xs rounded-lg border transition-colors ${
                     dayOfWeek === i
-                      ? "bg-blue-50 border-blue-200 text-blue-600 font-medium"
-                      : "bg-white border-slate-200 text-slate-400"
+                      ? "bg-rose-50 border-rose-200 text-rose-500 font-medium"
+                      : "bg-white border-cream-200 text-stone-400"
                   }`}
                 >
                   {d.slice(0, 2)}
@@ -486,51 +486,51 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="block text-xs text-slate-500 mb-1">From</label>
+              <label className="block text-xs text-stone-400 mb-1">From</label>
               <input
                 type="date"
                 value={recurrenceStart}
                 onChange={(e) => setRecurrenceStart(e.target.value)}
                 required
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
               />
             </div>
             <div className="flex-1">
-              <label className="block text-xs text-slate-500 mb-1">Until (opt.)</label>
+              <label className="block text-xs text-stone-400 mb-1">Until (opt.)</label>
               <input
                 type="date"
                 value={recurrenceEnd}
                 onChange={(e) => setRecurrenceEnd(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
               />
             </div>
           </div>
         </>
       ) : (
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Date</label>
+          <label className="block text-xs text-stone-400 mb-1">Date</label>
           <input
             type="date"
             value={specificDate}
             onChange={(e) => setSpecificDate(e.target.value)}
             required
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
           />
         </div>
       )}
 
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+        <p className="text-xs text-rose-500 bg-rose-50 px-3 py-2 rounded-lg">{error}</p>
       )}
 
       <div className="flex gap-2">
-        <button type="button" onClick={onDone} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg">
+        <button type="button" onClick={onDone} className="flex-1 py-2 text-sm text-stone-500 bg-slate-100 rounded-lg">
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg"
+          className="flex-1 py-2 text-sm text-white bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 rounded-lg"
         >
           {loading ? "Saving..." : "Add event"}
         </button>
@@ -609,26 +609,26 @@ function ModulesSettings() {
     <div className="space-y-6">
       {/* Create / Edit Module */}
       <section>
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">
+        <h3 className="text-sm font-semibold text-stone-600 mb-3">
           {editingModule ? "Edit Module" : "Add Module"}
         </h3>
 
-        <form onSubmit={editingModule ? handleUpdate : handleCreate} className="bg-white rounded-xl border border-slate-200 p-4 mb-3 space-y-3">
+        <form onSubmit={editingModule ? handleUpdate : handleCreate} className="bg-white rounded-xl border border-cream-200 p-4 mb-3 space-y-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Module name</label>
+            <label className="block text-xs text-stone-400 mb-1">Module name</label>
             <input
               type="text"
               value={moduleName}
               onChange={(e) => setModuleName(e.target.value)}
               placeholder="e.g. Computer Systems"
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">
+            <label className="block text-xs text-stone-400 mb-1">
               Regex patterns (one per line)
-              <span className="text-slate-400 ml-1">— matched against event titles</span>
+              <span className="text-stone-400 ml-1">— matched against event titles</span>
             </label>
             <textarea
               value={patternsStr}
@@ -636,19 +636,19 @@ function ModulesSettings() {
               placeholder={"COMP\\d{4}\nComputer Systems"}
               rows={3}
               required
-              className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 text-sm font-mono border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 resize-none"
             />
           </div>
           <div className="flex gap-2">
             {editingModule && (
-              <button type="button" onClick={cancelEdit} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg">
+              <button type="button" onClick={cancelEdit} className="flex-1 py-2 text-sm text-stone-500 bg-slate-100 rounded-lg">
                 Cancel
               </button>
             )}
             <button
               type="submit"
               disabled={adding || !moduleName.trim() || !patternsStr.trim()}
-              className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg"
+              className="flex-1 py-2 text-sm text-white bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 rounded-lg"
             >
               {adding ? "Saving..." : editingModule ? "Update" : "Add Module"}
             </button>
@@ -657,9 +657,9 @@ function ModulesSettings() {
 
         {/* Module List */}
         {modules == null ? (
-          <div className="text-sm text-slate-400">Loading...</div>
+          <div className="text-sm text-stone-400">Loading...</div>
         ) : modules.length === 0 ? (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-stone-400">
             No modules defined yet. Add modules to group your events and tasks.
           </p>
         ) : (
@@ -667,18 +667,18 @@ function ModulesSettings() {
             {(modules as Module[]).map((mod) => (
               <div
                 key={mod._id}
-                className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+                className="flex items-center justify-between gap-2 bg-cream-50 rounded-lg px-3 py-2 border border-cream-200"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{mod.name}</p>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="text-sm font-medium text-stone-700">{mod.name}</p>
+                  <p className="text-xs text-stone-400 truncate">
                     {mod.patterns.join(", ")}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => startEdit(mod)}
-                    className="text-slate-300 hover:text-blue-500 transition-colors p-1"
+                    className="text-stone-300 hover:text-blue-500 transition-colors p-1"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -686,7 +686,7 @@ function ModulesSettings() {
                   </button>
                   <button
                     onClick={() => removeModule({ id: mod._id })}
-                    className="text-slate-300 hover:text-red-400 transition-colors p-1"
+                    className="text-stone-300 hover:text-rose-500 transition-colors p-1"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -703,22 +703,22 @@ function ModulesSettings() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-700">Batch Assignment</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Assign modules to each event, or run auto-detection</p>
+            <h3 className="text-sm font-semibold text-stone-600">Batch Assignment</h3>
+            <p className="text-xs text-stone-400 mt-0.5">Assign modules to each event, or run auto-detection</p>
           </div>
           <button
             onClick={handleAutoAssign}
             disabled={autoAssigning || !(modules as Module[])?.length}
-            className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg font-medium transition-colors"
+            className="text-xs px-3 py-1.5 bg-lavender-500 hover:bg-lavender-600 disabled:bg-stone-200 text-white rounded-lg font-medium transition-colors"
           >
             {autoAssigning ? "Running..." : "Auto-Detect"}
           </button>
         </div>
 
         {events == null ? (
-          <div className="text-sm text-slate-400">Loading...</div>
+          <div className="text-sm text-stone-400">Loading...</div>
         ) : events.length === 0 ? (
-          <p className="text-sm text-slate-400">No events to assign.</p>
+          <p className="text-sm text-stone-400">No events to assign.</p>
         ) : (
           <div className="space-y-1.5 max-h-96 overflow-y-auto">
             {(events as TimetableEvent[]).map((event: TimetableEvent) => {
@@ -726,11 +726,11 @@ function ModulesSettings() {
               return (
                 <div
                   key={event._id}
-                  className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200"
+                  className="flex items-center justify-between gap-2 bg-cream-50 rounded-lg px-3 py-2 border border-cream-200"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800 truncate">{event.title}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-sm font-medium text-stone-700 truncate">{event.title}</p>
+                    <p className="text-xs text-stone-400">
                       {event.source === "ical" ? "iCAL" : "Manual"}
                       {event.moduleName && <span> · Current: {currentModule?.name}</span>}
                     </p>
@@ -744,7 +744,7 @@ function ModulesSettings() {
                         moduleId: val ? (val as Id<"modules">) : undefined,
                       });
                     }}
-                    className="text-xs px-2 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
+                    className="text-xs px-2 py-1.5 border border-cream-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 flex-shrink-0"
                   >
                     <option value="">None</option>
                     {(modules as Module[])?.map(mod => (
@@ -764,13 +764,13 @@ function ModulesSettings() {
 function AccountSettings({ onSignOut }: { onSignOut: () => void }) {
   return (
     <div className="space-y-4">
-      <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
-        <p className="text-sm text-slate-600 mb-4">
+      <div className="bg-cream-50 rounded-xl border border-cream-200 p-4">
+        <p className="text-sm text-stone-500 mb-4">
           Manage your UniTrack account.
         </p>
         <button
           onClick={onSignOut}
-          className="w-full py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+          className="w-full py-2 text-sm font-medium text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
         >
           Sign out
         </button>

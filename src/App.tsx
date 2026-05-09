@@ -5,21 +5,21 @@ import { api } from "../convex/_generated/api";
 import { Auth } from "./components/Auth";
 import { Nav } from "./components/Nav";
 import type { Tab } from "./components/Nav";
-import { CombinedView } from "./components/CombinedView";
-import { TodayView } from "./components/TodayView";
-import { TodosView } from "./components/TodosView";
+import { CombinedView } from "./components/home/CombinedView";
+import { TodayView } from "./components/schedule/TodayView";
+import { TodosView } from "./components/todos/TodosView";
 import { SettingsView } from "./components/SettingsView";
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
-  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
+  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(
+    undefined,
+  );
   const { signOut } = useAuthActions();
 
-  // Get todo count for badge
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
 
-  // Process missed lecture events once per day, regardless of active tab
   const processMissed = useMutation(api.occurrences.processMissedEvents);
   useEffect(() => {
     const todayStr = new Date().toISOString().split("T")[0];
@@ -39,19 +39,33 @@ function MainApp() {
     setActiveTab("today");
   };
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "1" && !e.metaKey && !e.ctrlKey) {
+        setActiveTab("combined");
+      } else if (e.key === "2" && !e.metaKey && !e.ctrlKey) {
+        setActiveTab("today");
+      } else if (e.key === "3" && !e.metaKey && !e.ctrlKey) {
+        setActiveTab("todos");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen flex flex-col bg-cream">
       <Nav
         activeTab={activeTab}
         onTabChange={setActiveTab}
         todoBadge={todoBadge}
       />
 
-      {/* Content area —
-          sm+: offset by icon-only sidebar (w-14)
-          lg+: offset by wide sidebar (w-52)
-          mobile: extra bottom padding for bottom nav */}
-      <div className="sm:pl-14 pb-20 sm:pb-0">
+      <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0">
         {activeTab === "combined" && (
           <CombinedView
             onGoToTodos={() => setActiveTab("todos")}
@@ -80,8 +94,8 @@ export function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

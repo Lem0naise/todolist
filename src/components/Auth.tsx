@@ -30,41 +30,44 @@ export function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-slate-900">UniTrack</h1>
-          <p className="text-slate-500 mt-1 text-sm">Your university task tracker</p>
+          <div className="w-14 h-14 rounded-2xl bg-rose-400 flex items-center justify-center mx-auto shadow-sm mb-4">
+            <span className="text-white text-2xl font-hand font-bold">u</span>
+          </div>
+          <h1 className="text-xl font-bold text-stone-700 font-hand text-3xl">uni</h1>
+          <p className="text-stone-400 mt-1 text-sm">your uni tracker</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <div className="flex rounded-lg bg-slate-100 p-1 mb-6">
+        <div className="bg-white rounded-2xl border border-cream-200 p-5 shadow-sm">
+          <div className="flex rounded-lg bg-cream-100 p-1 mb-5">
             <button
               onClick={() => { setMode("signin"); setError(null); }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
                 mode === "signin"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white text-stone-700 shadow-sm"
+                  : "text-stone-400 hover:text-stone-600"
               }`}
             >
               Sign in
             </button>
             <button
               onClick={() => { setMode("signup"); setError(null); }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
                 mode === "signup"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white text-stone-700 shadow-sm"
+                  : "text-stone-400 hover:text-stone-600"
               }`}
             >
               Sign up
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             {mode === "signup" && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-stone-500 mb-1">
                   Name
                 </label>
                 <input
@@ -72,13 +75,13 @@ export function Auth() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required={mode === "signup"}
-                  placeholder="Your name"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="your name"
+                  className="w-full px-3 py-2 rounded-lg border border-cream-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 placeholder-stone-300 text-stone-700"
                 />
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-stone-500 mb-1">
                 Email
               </label>
               <input
@@ -87,11 +90,11 @@ export function Auth() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="you@university.ac.uk"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 rounded-lg border border-cream-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 placeholder-stone-300 text-stone-700"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-stone-500 mb-1">
                 Password
               </label>
               <input
@@ -100,12 +103,12 @@ export function Auth() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 rounded-lg border border-cream-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 placeholder-stone-300 text-stone-700"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+              <p className="text-sm text-rose-500 bg-rose-50 px-3 py-2 rounded-lg">
                 {error}
               </p>
             )}
@@ -113,13 +116,13 @@ export function Auth() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition-colors"
+              className="w-full py-2 px-4 bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 text-white text-sm font-bold rounded-lg transition-colors"
             >
               {loading
-                ? "Please wait..."
+                ? "please wait..."
                 : mode === "signin"
-                ? "Sign in"
-                : "Create account"}
+                  ? "Sign in"
+                  : "Create account"}
             </button>
           </form>
         </div>
