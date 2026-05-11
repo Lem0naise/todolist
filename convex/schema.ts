@@ -103,4 +103,18 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_completed", ["userId", "completed"]),
+
+  // Pomodoro timer sessions
+  pomoSessions: defineTable({
+    userId: v.id("users"),
+    date: v.string(),
+    time: v.string(),
+    minutes: v.number(),
+    topic: v.string(),
+    taskId: v.optional(v.id("todos")),
+    taskName: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_date", ["userId", "date"]),
 });

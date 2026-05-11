@@ -1,0 +1,1117 @@
+const STORAGE_KEY = 'pomoData';
+
+const TOPIC_COLORS = [
+	'#8b5a83', '#7c9885', '#d4a574', '#c85a5a', '#6b8e9e',
+	'#9d7ca8', '#8a9a5b', '#c67c89', '#7a8c9e', '#b8a878'
+];
+
+class PomoData {
+	constructor() {
+		this.load();
+	}
+
+	load() {
+		const data = localStorage.getItem(STORAGE_KEY);
+		if (data) {
+			const parsed = JSON.parse(data);
+			this.sessions = parsed.sessions || [];
+			this.settings = parsed.settings || { work: 25, shortBreak: 5, longBreak: 15, dailyGoal: 120 };
+			this.tasks = parsed.tasks || [];
+		} else {
+			this.sessions = [];
+			this.settings = { work: 25, shortBreak: 5, longBreak: 15, dailyGoal: 120 };
+			this.tasks = [];
+		}
+	}
+
+	save() {
+		localStorage.setItem(STORAGE_KEY, JSON.stringify({
+			sessions: this.sessions,
+			settings: this.settings,
+			tasks: this.tasks
+		}));
+	}
+
+	addSession(date, time, minutes, topic) {
+		this.sessions.push({ date, time, minutes: parseInt(minutes), topic });
+		this.save();
+	}
+
+	updateSettings(work, shortBreak, longBreak) {
+		this.settings = { work, shortBreak, longBreak, dailyGoal: this.settings.dailyGoal };
+		this.save();
+	}
+
+	updateDailyGoal(goal) {
+		this.settings.dailyGoal = parseInt(goal);
+		this.save();
+	}
+
+	getTodayTotal() {
+		const today = new Date().toISOString().split('T')[0];
+		return this.sessions
+			.filter(s => s.date === today)
+			.reduce((sum, s) => sum + s.minutes, 0);
+	}
+
+	getStatistics() {
+		if (this.sessions.length === 0) {
+			return {
+				total: 0,
+				thisWeek: 0,
+				thisMonth: 0,
+				currentStreak: 0,
+				bestDay: null,
+				topTopic: null
+			};
+		}
+
+		// Total time
+		const total = this.sessions.reduce((sum, s) => sum + s.minutes, 0);
+
+		// This week
+		const now = new Date();
+		const weekAgo = new Date(now);
+		weekAgo.setDate(weekAgo.getDate() - 7);
+		const weekAgoStr = weekAgo.toISOString().split('T')[0];
+		const thisWeek = this.sessions
+			.filter(s => s.date >= weekAgoStr)
+			.reduce((sum, s) => sum + s.minutes, 0);
+
+		// This month
+		const monthAgo = new Date(now);
+		monthAgo.setMonth(monthAgo.getMonth() - 1);
+		const monthAgoStr = monthAgo.toISOString().split('T')[0];
+		const thisMonth = this.sessions
+			.filter(s => s.date >= monthAgoStr)
+			.reduce((sum, s) => sum + s.minutes, 0);
+
+		// Current streak
+		const dates = [...new Set(this.sessions.map(s => s.date))].sort().reverse();
+		let currentStreak = 0;
+		const today = new Date().toISOString().split('T')[0];
+		
+		for (let i = 0; i < dates.length; i++) {
+			const expectedDate = new Date(today);
+			expectedDate.setDate(expectedDate.getDate() - i);
+			const expectedStr = expectedDate.toISOString().split('T')[0];
+			
+			if (dates[i] === expectedStr) {
+				currentStreak++;
+			} else {
+				break;
+			}
+		}
+
+		// Best day
+		const dayTotals = {};
+		this.sessions.forEach(s => {
+			dayTotals[s.date] = (dayTotals[s.date] || 0) + s.minutes;
+		});
+		const bestDayEntry = Object.entries(dayTotals).sort((a, b) => b[1] - a[1])[0];
+		const bestDay = bestDayEntry ? { date: bestDayEntry[0], minutes: bestDayEntry[1] } : null;
+
+		// Top topic
+		const topicTotals = {};
+		this.sessions.forEach(s => {
+			const topic = s.topic || 'Untitled';
+			topicTotals[topic] = (topicTotals[topic] || 0) + s.minutes;
+		});
+		const topTopicEntry = Object.entries(topicTotals).sort((a, b) => b[1] - a[1])[0];
+		const topTopic = topTopicEntry ? { name: topTopicEntry[0], minutes: topTopicEntry[1] } : null;
+
+		return {
+			total,
+			thisWeek,
+			thisMonth,
+			currentStreak,
+			bestDay,
+			topTopic
+		};
+	}
+
+	getTotalsByDate() {
+		const totals = {};
+		for (const session of this.sessions) {
+			if (!totals[session.date]) {
+				totals[session.date] = {};
+			}
+			const topic = session.topic || 'Untitled';
+			totals[session.date][topic] = (totals[session.date][topic] || 0) + session.minutes;
+		}
+
+		const dates = Object.keys(totals).sort();
+		if (dates.length === 0) return [];
+
+		const result = [];
+		const start = new Date(dates[0]);
+		const end = new Date(dates[dates.length - 1]);
+		
+		for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+			const dateStr = d.toISOString().split('T')[0];
+			result.push({
+				date: dateStr,
+				topics: totals[dateStr] || {}
+			});
+		}
+		
+		return result;
+	}
+
+	// Task management
+	addTask(subject, taskName) {
+		this.tasks.push({
+			id: Date.now(),
+			subject,
+			taskName,
+			completed: false,
+			createdAt: new Date().toISOString()
+		});
+		this.save();
+	}
+
+	toggleTask(taskId) {
+		const task = this.tasks.find(t => t.id === taskId);
+		if (task) {
+			task.completed = !task.completed;
+			this.save();
+		}
+	}
+
+	deleteTask(taskId) {
+		this.tasks = this.tasks.filter(t => t.id !== taskId);
+		this.save();
+	}
+
+	getActiveTasks() {
+		return this.tasks.filter(t => !t.completed);
+	}
+
+	getAllSubjects() {
+		const subjects = new Set();
+		this.sessions.forEach(s => {
+			if (s.topic) subjects.add(s.topic);
+		});
+		this.tasks.forEach(t => {
+			if (t.subject) subjects.add(t.subject);
+		});
+		return Array.from(subjects).sort();
+	}
+
+	export() {
+		return JSON.stringify({
+			sessions: this.sessions,
+			settings: this.settings,
+			tasks: this.tasks,
+			exportDate: new Date().toISOString()
+		}, null, 2);
+	}
+
+	import(jsonText) {
+		try {
+			const data = JSON.parse(jsonText);
+			if (data.sessions && Array.isArray(data.sessions)) {
+				this.sessions = data.sessions;
+				if (data.settings) {
+					this.settings = data.settings;
+				}
+				if (data.tasks) {
+					this.tasks = data.tasks;
+				}
+				this.save();
+				return true;
+			}
+		} catch (e) {
+			return false;
+		}
+		return false;
+	}
+
+	clear() {
+		this.sessions = [];
+		this.save();
+	}
+}
+
+class PomoTimer {
+	constructor() {
+		this.reset();
+	}
+
+	reset() {
+		this.startTime = null;
+		this.endTime = null;
+		this.duration = 0;
+		this.phase = null;
+		this.topic = '';
+		this.interval = null;
+		this.isRunning = false;
+		this.isPaused = false;
+		this.pausedTime = 0;
+		this.cyclePhases = [];
+		this.currentPhaseIndex = 0;
+	}
+
+	initCycle(work, shortBreak, longBreak, topic) {
+		this.reset();
+		this.topic = topic;
+		this.cyclePhases = [
+			{ type: 'work', duration: work, label: 'Work Session 1' },
+			{ type: 'break', duration: shortBreak, label: 'Short Break' },
+			{ type: 'work', duration: work, label: 'Work Session 2' },
+			{ type: 'break', duration: longBreak, label: 'Long Break' }
+		];
+		this.startNextPhase();
+	}
+
+	initCycleWithBlocks(blocks, topic) {
+		this.reset();
+		this.topic = topic;
+		
+		// Convert cycle blocks to phases
+		let workCount = 0;
+		this.cyclePhases = blocks.map(block => {
+			let phaseType, label;
+			
+			if (block.type === 'work') {
+				workCount++;
+				phaseType = 'work';
+				label = `Work Session ${workCount}`;
+			} else if (block.type === 'short-break') {
+				phaseType = 'break';
+				label = 'Short Break';
+			} else if (block.type === 'long-break') {
+				phaseType = 'break';
+				label = 'Long Break';
+			}
+			
+			return {
+				type: phaseType,
+				duration: block.duration,
+				label: label
+			};
+		});
+		
+		this.startNextPhase();
+	}
+
+	startNextPhase() {
+		if (this.currentPhaseIndex >= this.cyclePhases.length) {
+			return false;
+		}
+
+		const phase = this.cyclePhases[this.currentPhaseIndex];
+		this.phase = phase;
+		this.duration = phase.duration;
+		this.startTime = new Date();
+		this.endTime = new Date(this.startTime.getTime() + this.duration * 60 * 1000);
+		this.isRunning = true;
+		this.isPaused = false;
+		this.pausedTime = 0;
+		return true;
+	}
+
+	pause() {
+		if (!this.isRunning || this.isPaused) return;
+		this.isPaused = true;
+		this.pausedTime = new Date();
+	}
+
+	resume() {
+		if (!this.isPaused) return;
+		const pauseDuration = new Date() - this.pausedTime;
+		this.endTime = new Date(this.endTime.getTime() + pauseDuration);
+		this.isPaused = false;
+	}
+
+	stop() {
+		this.isRunning = false;
+		if (this.interval) {
+			clearInterval(this.interval);
+			this.interval = null;
+		}
+		
+		// Return elapsed time in minutes with decimal precision
+		const elapsed = (new Date() - this.startTime) / 1000 / 60;
+		return Math.max(0.01, Math.round(elapsed * 100) / 100); // Round to 2 decimal places, minimum 0.01
+	}
+
+	getTimeLeft() {
+		if (!this.isRunning || this.isPaused) return this.isPaused ? Math.floor((this.endTime - this.pausedTime) / 1000) : 0;
+		const now = new Date();
+		const left = Math.max(0, this.endTime - now);
+		return Math.floor(left / 1000);
+	}
+
+	getProgress() {
+		if (!this.isRunning) return 0;
+		const total = this.duration * 60;
+		const left = this.getTimeLeft();
+		const done = total - left;
+		return Math.min(100, Math.round((done / total) * 100 * 10) / 10);
+	}
+
+	isComplete() {
+		return this.isRunning && !this.isPaused && this.getTimeLeft() === 0;
+	}
+
+	nextPhase() {
+		this.currentPhaseIndex++;
+		return this.startNextPhase();
+	}
+
+	isCycleComplete() {
+		return this.currentPhaseIndex >= this.cyclePhases.length;
+	}
+
+	getCompletedWorkMinutes() {
+		let total = 0;
+		for (let i = 0; i < this.currentPhaseIndex; i++) {
+			if (this.cyclePhases[i].type === 'work') {
+				total += this.cyclePhases[i].duration;
+			}
+		}
+		if (this.phase && this.phase.type === 'work' && this.isComplete()) {
+			total += this.duration;
+		}
+		return total;
+	}
+}
+
+class PomoUI {
+	constructor() {
+		this.data = new PomoData();
+		this.timer = new PomoTimer();
+		this.currentView = 'menu-view';
+		this.topicColorMap = new Map();
+		this.initializeUI();
+	}
+
+	initializeUI() {
+		document.getElementById('manage-tasks-btn').addEventListener('click', () => this.showTasks());
+		document.getElementById('begin-btn').addEventListener('click', () => this.showBegin());
+		document.getElementById('log-btn').addEventListener('click', () => this.showView('log-view'));
+		document.getElementById('view-btn').addEventListener('click', () => this.showSummary());
+		document.getElementById('data-btn').addEventListener('click', () => this.showView('data-view'));
+
+		// Daily goal tracker
+		document.getElementById('edit-goal-btn').addEventListener('click', () => this.editGoal());
+		document.getElementById('save-goal-btn').addEventListener('click', () => this.saveGoal());
+		document.getElementById('cancel-goal-btn').addEventListener('click', () => this.cancelGoalEdit());
+
+		document.getElementById('start-cycle-btn').addEventListener('click', () => this.startCycle());
+		document.getElementById('cancel-begin-btn').addEventListener('click', () => this.showView('menu-view'));
+
+		// Cycle builder
+		document.getElementById('reset-classic-btn').addEventListener('click', () => this.resetToClassic());
+		document.getElementById('add-work-btn').addEventListener('click', () => this.addBlock('work', 25));
+		document.getElementById('add-short-break-btn').addEventListener('click', () => this.addBlock('short-break', 5));
+		document.getElementById('add-long-break-btn').addEventListener('click', () => this.addBlock('long-break', 20));
+
+		document.getElementById('pause-btn').addEventListener('click', () => this.togglePause());
+		document.getElementById('end-cycle-btn').addEventListener('click', () => this.endCycle());
+
+		document.getElementById('start-another-btn').addEventListener('click', () => this.showBegin());
+		document.getElementById('back-to-menu-btn').addEventListener('click', () => this.showView('menu-view'));
+
+		document.getElementById('save-log-btn').addEventListener('click', () => this.saveLog());
+		document.getElementById('cancel-log-btn').addEventListener('click', () => this.showView('menu-view'));
+		
+		document.getElementById('log-date-input').value = new Date().toISOString().split('T')[0];
+
+		document.getElementById('back-from-summary-btn').addEventListener('click', () => this.showView('menu-view'));
+
+		document.getElementById('export-data-btn').addEventListener('click', () => this.exportData());
+		document.getElementById('import-file').addEventListener('change', (e) => this.importData(e));
+		document.getElementById('clear-data-btn').addEventListener('click', () => this.clearData());
+		document.getElementById('back-from-data-btn').addEventListener('click', () => this.showView('menu-view'));
+
+		// Tasks management
+		document.getElementById('add-task-btn').addEventListener('click', () => this.addTask());
+		document.getElementById('back-from-tasks-btn').addEventListener('click', () => this.showView('menu-view'));
+
+		['custom-subject-input', 'custom-task-input'].forEach(id => {
+			document.getElementById(id).addEventListener('keypress', (e) => {
+				if (e.key === 'Enter') this.startCycle();
+			});
+		});
+
+		['new-task-subject', 'new-task-name'].forEach(id => {
+			document.getElementById(id).addEventListener('keypress', (e) => {
+				if (e.key === 'Enter') this.addTask();
+			});
+		});
+
+		['log-minutes-input', 'log-topic-input'].forEach(id => {
+			document.getElementById(id).addEventListener('keypress', (e) => {
+				if (e.key === 'Enter') this.saveLog();
+			});
+		});
+
+		// Auto-select custom task radio when typing in custom input
+		['custom-subject-input', 'custom-task-input'].forEach(id => {
+			document.getElementById(id).addEventListener('focus', () => {
+				document.getElementById('custom-task-radio').checked = true;
+			});
+		});
+		
+		// Make entire custom task option clickable
+		document.querySelector('.custom-task-option').addEventListener('click', (e) => {
+			// Don't trigger if clicking on the input fields themselves
+			if (e.target.tagName !== 'INPUT' || e.target.type === 'radio') {
+				document.getElementById('custom-task-radio').checked = true;
+				// Focus the subject input for convenience
+				if (e.target.tagName !== 'INPUT') {
+					document.getElementById('custom-subject-input').focus();
+				}
+			}
+		});
+
+		document.getElementById('goal-input').addEventListener('keypress', (e) => {
+			if (e.key === 'Enter') this.saveGoal();
+		});
+
+		// Initialize cycle blocks array
+		this.cycleBlocks = [];
+	}
+
+	showView(viewId) {
+		document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+		document.getElementById(viewId).classList.add('active');
+		this.currentView = viewId;
+		
+		// Update goal tracker when returning to menu
+		if (viewId === 'menu-view') {
+			this.updateGoalDisplay();
+		}
+		
+		// Populate subject suggestions in log view
+		if (viewId === 'log-view') {
+			const subjects = this.data.getAllSubjects();
+			const datalist = document.getElementById('subject-suggestions-log');
+			datalist.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
+		}
+	}
+
+	updateGoalDisplay() {
+		const todayTotal = this.data.getTodayTotal();
+		const goal = this.data.settings.dailyGoal;
+		const percentage = Math.min((todayTotal / goal) * 100, 100);
+		
+		document.getElementById('goal-progress-fill').style.width = percentage + '%';
+		document.getElementById('goal-text').textContent = `${todayTotal} / ${goal} minutes`;
+	}
+
+	editGoal() {
+		document.getElementById('goal-display').style.display = 'none';
+		document.getElementById('goal-edit').style.display = 'flex';
+		document.getElementById('goal-input').value = this.data.settings.dailyGoal;
+		document.getElementById('goal-input').focus();
+	}
+
+	saveGoal() {
+		const newGoal = parseInt(document.getElementById('goal-input').value);
+		if (!newGoal || newGoal <= 0) {
+			this.showToast('Please enter a valid goal', 'error');
+			return;
+		}
+		
+		this.data.updateDailyGoal(newGoal);
+		this.cancelGoalEdit();
+		this.updateGoalDisplay();
+		this.showToast('Daily goal updated', 'success');
+	}
+
+	cancelGoalEdit() {
+		document.getElementById('goal-display').style.display = 'block';
+		document.getElementById('goal-edit').style.display = 'none';
+	}
+
+	showTasks() {
+		// Populate subject suggestions
+		const subjects = this.data.getAllSubjects();
+		const datalist = document.getElementById('subject-suggestions-tasks');
+		datalist.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
+		
+		this.renderTasksList();
+		this.showView('tasks-view');
+	}
+
+	renderTasksList() {
+		const tasksList = document.getElementById('tasks-list');
+		const allTasks = this.data.tasks;
+		
+		if (allTasks.length === 0) {
+			tasksList.innerHTML = '<div class="tasks-list-empty">No tasks yet. Add your first task above!</div>';
+			return;
+		}
+		
+		tasksList.innerHTML = allTasks.map(task => `
+			<div class="task-item ${task.completed ? 'completed' : ''}">
+				<input type="checkbox" ${task.completed ? 'checked' : ''} onchange="app.toggleTaskUI(${task.id})">
+				<div class="task-details">
+					<div class="task-subject-name">${task.subject}</div>
+					<div class="task-task-name">${task.taskName}</div>
+				</div>
+				<button class="task-delete-btn" onclick="app.deleteTaskUI(${task.id})">Delete</button>
+			</div>
+		`).join('');
+	}
+
+	addTask() {
+		const subject = document.getElementById('new-task-subject').value.trim();
+		const taskName = document.getElementById('new-task-name').value.trim();
+		
+		if (!subject || !taskName) {
+			this.showToast('Please enter both subject and task name', 'error');
+			return;
+		}
+		
+		this.data.addTask(subject, taskName);
+		document.getElementById('new-task-subject').value = '';
+		document.getElementById('new-task-name').value = '';
+		this.renderTasksList();
+		this.showToast('Task added!', 'success');
+	}
+
+	toggleTaskUI(taskId) {
+		this.data.toggleTask(taskId);
+		this.renderTasksList();
+	}
+
+	deleteTaskUI(taskId) {
+		if (confirm('Delete this task?')) {
+			this.data.deleteTask(taskId);
+			this.renderTasksList();
+			this.showToast('Task deleted', 'success');
+		}
+	}
+
+	showBegin() {
+		// Populate subject suggestions
+		const subjects = this.data.getAllSubjects();
+		const datalist = document.getElementById('subject-suggestions');
+		datalist.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
+		
+		// Populate active tasks
+		const activeTasks = this.data.getActiveTasks();
+		const taskList = document.getElementById('task-list');
+		
+		if (activeTasks.length === 0) {
+			taskList.innerHTML = '<p class="no-tasks-msg" style="color: var(--text-light); font-size: 14px; margin: 8px 0;">No active tasks. Add some in Manage Tasks!</p>';
+		} else {
+			taskList.innerHTML = activeTasks.map(task => `
+				<div class="task-option">
+					<input type="radio" name="task-choice" id="task-${task.id}" value="${task.id}">
+					<label for="task-${task.id}">
+						<span class="task-subject">${task.subject}</span> — <span class="task-name">${task.taskName}</span>
+					</label>
+				</div>
+			`).join('');
+			
+			// Add click handlers to make entire task option clickable
+			taskList.querySelectorAll('.task-option').forEach(option => {
+				option.addEventListener('click', () => {
+					const radio = option.querySelector('input[type="radio"]');
+					radio.checked = true;
+				});
+			});
+		}
+		
+		// Default to custom task
+		document.getElementById('custom-task-radio').checked = true;
+		
+		// Initialize with classic pomodoro pattern
+		this.resetToClassic();
+		
+		this.showView('begin-view');
+	}
+
+	resetToClassic() {
+		this.cycleBlocks = [
+			{ type: 'work', duration: 25, id: Date.now() + 0 },
+			{ type: 'short-break', duration: 5, id: Date.now() + 1 },
+			{ type: 'work', duration: 25, id: Date.now() + 2 },
+			{ type: 'long-break', duration: 20, id: Date.now() + 3 }
+		];
+		this.renderCycleBlocks();
+	}
+
+	addBlock(type, defaultDuration) {
+		this.cycleBlocks.push({
+			type,
+			duration: defaultDuration,
+			id: Date.now()
+		});
+		this.renderCycleBlocks();
+	}
+
+	removeBlock(blockId) {
+		this.cycleBlocks = this.cycleBlocks.filter(b => b.id !== blockId);
+		this.renderCycleBlocks();
+	}
+
+	moveBlockUp(blockId) {
+		const index = this.cycleBlocks.findIndex(b => b.id === blockId);
+		if (index > 0) {
+			[this.cycleBlocks[index - 1], this.cycleBlocks[index]] = [this.cycleBlocks[index], this.cycleBlocks[index - 1]];
+			this.renderCycleBlocks();
+		}
+	}
+
+	moveBlockDown(blockId) {
+		const index = this.cycleBlocks.findIndex(b => b.id === blockId);
+		if (index < this.cycleBlocks.length - 1) {
+			[this.cycleBlocks[index], this.cycleBlocks[index + 1]] = [this.cycleBlocks[index + 1], this.cycleBlocks[index]];
+			this.renderCycleBlocks();
+		}
+	}
+
+	updateBlockDuration(blockId, newDuration) {
+		const block = this.cycleBlocks.find(b => b.id === blockId);
+		if (block) {
+			block.duration = parseFloat(newDuration) || 1;
+		}
+	}
+
+	renderCycleBlocks() {
+		const container = document.getElementById('cycle-blocks');
+		
+		if (this.cycleBlocks.length === 0) {
+			container.innerHTML = '<div style="text-align: center; color: var(--text-light); padding: 40px;">Add blocks to build your cycle</div>';
+			return;
+		}
+
+		const getBlockLabel = (block) => {
+			if (block.type === 'work') return 'Work';
+			if (block.type === 'short-break') return 'Short Break';
+			if (block.type === 'long-break') return 'Long Break';
+			return block.type;
+		};
+
+		container.innerHTML = this.cycleBlocks.map((block, index) => `
+			<div class="cycle-block ${block.type}" data-block-id="${block.id}">
+				<div class="cycle-block-info">
+					<div class="cycle-block-type">${getBlockLabel(block)}</div>
+					<div class="cycle-block-duration">
+						<input type="number" min="1" step="1" value="${block.duration}" 
+							onchange="app.updateBlockDuration(${block.id}, this.value)"
+							onclick="event.stopPropagation()">
+						<span>min</span>
+					</div>
+				</div>
+				<div class="cycle-block-controls">
+					<button class="cycle-block-arrow" ${index === 0 ? 'disabled' : ''} 
+						onclick="app.moveBlockUp(${block.id})">↑</button>
+					<button class="cycle-block-arrow" ${index === this.cycleBlocks.length - 1 ? 'disabled' : ''} 
+						onclick="app.moveBlockDown(${block.id})">↓</button>
+					<button class="cycle-block-remove" onclick="app.removeBlock(${block.id})">Remove</button>
+				</div>
+			</div>
+		`).join('');
+
+	}
+
+	startCycle() {
+		if (this.cycleBlocks.length === 0) {
+			this.showToast('Please add at least one block to your cycle', 'error');
+			return;
+		}
+
+		// Get selected task or custom input
+		let subject = '';
+		let taskName = '';
+		
+		const selectedTaskRadio = document.querySelector('input[name="task-choice"]:checked');
+		if (!selectedTaskRadio) {
+			this.showToast('Please select a task or enter custom', 'error');
+			return;
+		}
+		
+		if (selectedTaskRadio.value === 'custom') {
+			subject = document.getElementById('custom-subject-input').value.trim();
+			taskName = document.getElementById('custom-task-input').value.trim();
+			
+			if (!subject) {
+				this.showToast('Please enter a subject', 'error');
+				return;
+			}
+			
+			if (!taskName) {
+				this.showToast('Please enter a task name', 'error');
+				return;
+			}
+		} else {
+			// Find the selected task
+			const taskId = parseInt(selectedTaskRadio.value);
+			const task = this.data.tasks.find(t => t.id === taskId);
+			if (task) {
+				subject = task.subject;
+				taskName = task.taskName;
+			}
+		}
+
+		// Initialize timer with custom cycle blocks
+		this.timer.initCycleWithBlocks(this.cycleBlocks, subject);
+		this.timer.taskName = taskName; // Store task name for display
+		
+		document.getElementById('custom-subject-input').value = '';
+		document.getElementById('custom-task-input').value = '';
+		
+		this.showView('timer-view');
+		this.updateTimerDisplay();
+	}
+
+	updateTimerDisplay() {
+		const topicEl = document.getElementById('timer-topic');
+		const displayEl = document.getElementById('timer-display');
+		const timerContainer = document.querySelector('.timer-container');
+		const pauseBtn = document.getElementById('pause-btn');
+		const progressCircle = document.querySelector('.progress-ring-circle');
+		const circumference = 2 * Math.PI * 90;
+		
+		if (this.timer.topic && this.timer.phase.type === 'work') {
+			// Display "Subject - Task Name" format
+			const displayText = this.timer.taskName 
+				? `${this.timer.topic} — ${this.timer.taskName}`
+				: this.timer.topic;
+			topicEl.textContent = displayText;
+		} else {
+			// Display break type in uppercase
+			if (this.timer.phase.label === 'Short Break') {
+				topicEl.textContent = 'Take a Short Break!';
+			} else if (this.timer.phase.label === 'Long Break') {
+				topicEl.textContent = 'Take a Long Break!';
+			} else {
+				topicEl.textContent = '';
+			}
+		}
+
+		if (this.timer.phase.type === 'break') {
+			timerContainer.classList.add('break');
+		} else {
+			timerContainer.classList.remove('break');
+		}
+		
+		// Update schedule times
+		this.updateScheduleTimes();
+
+		this.timer.interval = setInterval(() => {
+			if (this.timer.isPaused) {
+				pauseBtn.textContent = 'Resume';
+				timerContainer.classList.add('paused');
+				return;
+			}
+
+			pauseBtn.textContent = 'Pause';
+			timerContainer.classList.remove('paused');
+
+			if (this.timer.isComplete()) {
+				if (this.timer.phase.type === 'work') {
+					const date = this.timer.startTime.toISOString().split('T')[0];
+					const time = this.timer.startTime.toTimeString().split(' ')[0];
+					const topic = this.timer.topic || 'Untitled';
+					this.data.addSession(date, time, this.timer.duration, topic);
+				}
+
+				this.timer.nextPhase();
+				
+				if (this.timer.isCycleComplete()) {
+					this.completeCycle();
+				} else {
+					this.updateTimerDisplay();
+					this.showToast(`${this.timer.phase.label} started!`, 'success');
+				}
+				return;
+			}
+
+			const secondsLeft = this.timer.getTimeLeft();
+			const minutes = Math.floor(secondsLeft / 60);
+			const seconds = secondsLeft % 60;
+			
+			if (this.timer.duration >= 60) {
+				const hours = Math.floor(minutes / 60);
+				const mins = minutes % 60;
+				displayEl.textContent = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+			} else {
+				displayEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+			}
+
+			const progress = this.timer.getProgress();
+			
+			const offset = circumference - (progress / 100) * circumference;
+			progressCircle.style.strokeDashoffset = offset;
+		}, 100);
+	}
+	
+	updateScheduleTimes() {
+		const formatTime = (date) => {
+			const hours = date.getHours();
+			const minutes = date.getMinutes();
+			const ampm = hours >= 12 ? 'PM' : 'AM';
+			const displayHours = hours % 12 || 12;
+			return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+		};
+		
+		// Calculate next phase start time and cycle end time
+		const currentEndTime = this.timer.endTime;
+		let nextPhaseTime = new Date(currentEndTime);
+		let cycleEndTime = new Date(currentEndTime);
+		
+		// Add remaining phases to calculate cycle end
+		for (let i = this.timer.currentPhaseIndex + 1; i < this.timer.cyclePhases.length; i++) {
+			cycleEndTime = new Date(cycleEndTime.getTime() + this.timer.cyclePhases[i].duration * 60 * 1000);
+		}
+		
+		// Update next phase info
+		const nextPhaseLabel = document.getElementById('next-phase-label');
+		const nextStartTime = document.getElementById('next-start-time');
+		
+		if (this.timer.currentPhaseIndex + 1 < this.timer.cyclePhases.length) {
+			const nextPhase = this.timer.cyclePhases[this.timer.currentPhaseIndex + 1];
+			nextPhaseLabel.textContent = `${nextPhase.label} starts:`;
+			nextStartTime.textContent = formatTime(nextPhaseTime);
+		} else {
+			nextPhaseLabel.textContent = 'Next phase:';
+			nextStartTime.textContent = 'None (last phase)';
+		}
+		
+		// Update cycle end time
+		document.getElementById('cycle-end-time').textContent = formatTime(cycleEndTime);
+	}
+
+	togglePause() {
+		if (this.timer.isPaused) {
+			this.timer.resume();
+		} else {
+			this.timer.pause();
+		}
+	}
+
+	endCycle() {
+		if (this.timer.isRunning && this.timer.phase.type === 'work') {
+			const elapsed = this.timer.stop();
+			// Save any amount of time worked, even if less than 1 minute
+			if (elapsed > 0) {
+				const date = this.timer.startTime.toISOString().split('T')[0];
+				const time = this.timer.startTime.toTimeString().split(' ')[0];
+				const topic = this.timer.topic || 'Untitled';
+				this.data.addSession(date, time, elapsed, topic);
+				
+				// Format time display
+				let timeStr;
+				if (elapsed >= 1) {
+					const minutes = Math.floor(elapsed);
+					const seconds = Math.round((elapsed - minutes) * 60);
+					timeStr = seconds > 0 ? `${minutes} min ${seconds} sec` : `${minutes} min`;
+				} else {
+					const seconds = Math.round(elapsed * 60);
+					timeStr = `${seconds} sec`;
+				}
+				this.showToast(`Saved ${timeStr} of work`, 'success');
+			}
+		} else {
+			this.timer.stop();
+		}
+		this.showView('menu-view');
+	}
+
+	completeCycle() {
+		this.timer.stop();
+		const totalMinutes = this.timer.getCompletedWorkMinutes();
+		const messageEl = document.getElementById('cycle-message');
+		const topicText = this.timer.topic ? ` on ${this.timer.topic}` : '';
+		messageEl.textContent = `You completed a full Pomodoro cycle with ${totalMinutes} minutes of work${topicText}!`;
+		this.showView('cycle-complete-view');
+	}
+
+	saveLog() {
+		const date = document.getElementById('log-date-input').value;
+		const minutes = parseFloat(document.getElementById('log-minutes-input').value);
+		const topic = document.getElementById('log-topic-input').value.trim();
+
+		if (!date) {
+			this.showToast('Please enter a date', 'error');
+			return;
+		}
+
+		if (!minutes || minutes <= 0) {
+			this.showToast('Please enter valid minutes', 'error');
+			return;
+		}
+
+		this.data.addSession(date, '00:00:00', minutes, topic);
+		
+		document.getElementById('log-minutes-input').value = '';
+		document.getElementById('log-topic-input').value = '';
+		
+		this.showView('menu-view');
+		this.showToast('Session logged successfully!', 'success');
+	}
+
+	showSummary() {
+		const stats = this.data.getStatistics();
+		
+		// Update statistics cards
+		const formatTime = (mins) => {
+			const hours = Math.floor(mins / 60);
+			const minutes = mins % 60;
+			if (hours > 0) {
+				return `${hours}h ${minutes}m`;
+			}
+			return `${minutes} min`;
+		};
+
+		document.getElementById('stat-total').textContent = formatTime(stats.total);
+		document.getElementById('stat-week').textContent = formatTime(stats.thisWeek);
+		document.getElementById('stat-month').textContent = formatTime(stats.thisMonth);
+		document.getElementById('stat-streak').textContent = stats.currentStreak + (stats.currentStreak === 1 ? ' day' : ' days');
+		
+		if (stats.bestDay) {
+			document.getElementById('stat-best-day').textContent = formatTime(stats.bestDay.minutes);
+			document.getElementById('stat-best-day').parentElement.title = `Best day: ${stats.bestDay.date}`;
+		} else {
+			document.getElementById('stat-best-day').textContent = '—';
+		}
+		
+		if (stats.topTopic) {
+			document.getElementById('stat-top-topic').textContent = stats.topTopic.name;
+			document.getElementById('stat-top-topic').parentElement.title = `${formatTime(stats.topTopic.minutes)} total`;
+		} else {
+			document.getElementById('stat-top-topic').textContent = '—';
+		}
+
+		// Render day-by-day breakdown
+		const contentEl = document.getElementById('summary-content');
+		const totals = this.data.getTotalsByDate();
+
+		if (totals.length === 0) {
+			contentEl.innerHTML = '<div class="summary-empty">No sessions recorded yet. Start your first cycle!</div>';
+		} else {
+
+			const sessionCount = this.data.sessions.length;
+			if (sessionCount > 0 && sessionCount % 5 === 0) {
+				this.showToast('Tip: Export your data to back it up!', 'success');
+			}
+			
+			const allTopics = new Set();
+			totals.forEach(day => {
+				Object.keys(day.topics).forEach(topic => allTopics.add(topic));
+			});
+
+			let colorIndex = 0;
+			allTopics.forEach(topic => {
+				if (!this.topicColorMap.has(topic)) {
+					this.topicColorMap.set(topic, TOPIC_COLORS[colorIndex % TOPIC_COLORS.length]);
+					colorIndex++;
+				}
+			});
+
+			let legendHtml = '<div class="topic-legend">';
+			allTopics.forEach(topic => {
+				legendHtml += `
+					<div class="legend-item">
+						<div class="legend-color" style="background-color: ${this.topicColorMap.get(topic)}"></div>
+						<span>${topic}</span>
+					</div>
+				`;
+			});
+			legendHtml += '</div>';
+
+			const maxMinutes = Math.max(...totals.map(d => Object.values(d.topics).reduce((a, b) => a + b, 0)));
+			
+			let rowsHtml = '';
+			for (const day of totals) {
+				const dayTotal = Object.values(day.topics).reduce((a, b) => a + b, 0);
+				const hours = Math.floor(dayTotal / 60);
+				const mins = dayTotal % 60;
+				const timeStr = `${hours}h${String(mins).padStart(2, '0')}m`;
+				
+				let barHtml = '<div class="summary-bar">';
+				Object.entries(day.topics).forEach(([topic, minutes]) => {
+					const width = maxMinutes > 0 ? (minutes / maxMinutes) * 100 : 0;
+					const color = this.topicColorMap.get(topic);
+					barHtml += `<div class="summary-bar-segment" style="width: ${width}%; background-color: ${color}"></div>`;
+				});
+				barHtml += '</div>';
+				
+				rowsHtml += `
+					<div class="summary-row">
+						<div class="summary-date">${day.date}</div>
+						<div class="summary-time">${timeStr}</div>
+						${barHtml}
+					</div>
+				`;
+			}
+			
+			contentEl.innerHTML = legendHtml + rowsHtml;
+		}
+
+		this.showView('summary-view');
+	}
+
+	exportData() {
+		const json = this.data.export();
+		const blob = new Blob([json], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'pomo-data.json';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+		this.showToast('Data exported successfully!', 'success');
+	}
+
+	importData(event) {
+		const file = event.target.files[0];
+		if (!file) return;
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			if (this.data.import(e.target.result)) {
+				this.showToast('Data imported successfully!', 'success');
+				document.getElementById('import-filename').textContent = file.name;
+			} else {
+				this.showToast('Failed to import data. Check file format.', 'error');
+			}
+		};
+		reader.readAsText(file);
+		event.target.value = '';
+	}
+
+	clearData() {
+		if (confirm('Delete all Pomodoro data? This cannot be undone.')) {
+			if (confirm('Really sure? All progress will be lost!')) {
+				this.data.clear();
+				this.showToast('All data cleared', 'success');
+				this.showView('menu-view');
+			}
+		}
+	}
+
+	showToast(message, type = 'success') {
+		const container = document.getElementById('toast-container');
+		const toast = document.createElement('div');
+		toast.className = `toast ${type}`;
+		
+		const icon = type === 'success' ? '✓' : '✕';
+		toast.innerHTML = `
+			<div class="toast-icon">${icon}</div>
+			<div class="toast-message">${message}</div>
+		`;
+		
+		container.appendChild(toast);
+		
+		setTimeout(() => {
+			toast.remove();
+		}, 3000);
+	}
+}
+
+let app;
+window.addEventListener('DOMContentLoaded', () => {
+	app = new PomoUI();
+	app.updateGoalDisplay();
+});

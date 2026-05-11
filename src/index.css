@@ -1,13 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Caveat:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=DynaPuff:wght@400..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=DynaPuff:wght@400;500;600;700&display=swap');
 
 @import "tailwindcss";
 
 @theme {
   --font-hand: 'Caveat', cursive;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-  --font-main: 'DynaPuff', system-ui;
+  --font-sans: 'DynaPuff', system-ui;
+  --font-pomo: 'DynaPuff', system-ui;
 
   --color-cream: #fdfbf7;
   --color-cream-50: #fefdfb;
@@ -45,7 +43,8 @@
 
 body {
   margin: 0;
-  font-family: var(--font-main);
+  font-family: 'DynaPuff', system-ui;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #fdfbf7;

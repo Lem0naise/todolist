@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Pomodoro Timer - Focus & Productivity Tracker | Indigo Nolan</title>
+		<meta name="description" content="A simple Pomodoro timer to boost your productivity. Track your work sessions, log completed tasks, and visualize your progress over time."/>
+		<meta name="keywords" content="pomodoro timer, productivity, focus timer, time management, work sessions, Indigo Nolan"/>
+		<meta name="author" content="Indigo Nolan"/>
+		<meta name="robots" content="index, follow">
+		<link rel="canonical" href="https://indigo.spot/pomo/">
+		
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://indigo.spot/pomo/">
+		<meta property="og:title" content="Pomodoro Timer - Focus & Productivity Tracker">
+		<meta property="og:description" content="A simple Pomodoro timer to boost your productivity. Track your work sessions, log completed tasks, and visualize your progress over time.">
+		<meta property="og:site_name" content="Indigo Nolan">
+		
+		<meta property="twitter:url" content="https://indigo.spot/pomo/">
+		<meta property="twitter:title" content="Pomodoro Timer - Focus & Productivity Tracker">
+		<meta property="twitter:description" content="A simple Pomodoro timer to boost your productivity. Track your work sessions, log completed tasks, and visualize your progress over time.">
+		
+		<meta name="theme-color" content="#fffef3">
+		<link rel="icon" type="image/x-icon" href="../favicon.ico">
+		<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+		
+		<link rel="stylesheet" href="stylesheet.css?version=2.0">
+		
+		<script type="application/ld+json">
+		{
+			"@context": "https://schema.org",
+			"@type": "WebApplication",
+			"name": "Pomodoro Timer",
+			"description": "A simple Pomodoro timer to boost your productivity. Track your work sessions, log completed tasks, and visualize your progress over time.",
+			"url": "https://indigo.spot/pomo/",
+			"author": {
+				"@type": "Person",
+				"name": "Indigo Nolan"
+			},
+			"applicationCategory": "ProductivityApplication",
+			"operatingSystem": "Web Browser"
+		}
+		</script>
+	</head>
+	
+	<body>
+		<main id="main-content">
+			<div id="menu-view" class="view active">
+				<div class="menu-container">
+					<h1 class="app-title">Pomodoro Timer</h1>
+					<p class="app-subtitle">Focus, work, track your productivity</p>
+					
+					<div class="daily-goal-section">
+						<div class="goal-header">
+							<h3>Today's Goal</h3>
+							<button id="edit-goal-btn" class="edit-goal-btn">Edit</button>
+						</div>
+						<div id="goal-display" class="goal-display">
+							<div class="goal-progress-bar">
+								<div id="goal-progress-fill" class="goal-progress-fill"></div>
+							</div>
+							<div id="goal-text" class="goal-text">0 / 120 minutes</div>
+						</div>
+						<div id="goal-edit" class="goal-edit" style="display: none;">
+							<input type="number" id="goal-input" min="0" step="30" value="120" placeholder="Minutes">
+							<button id="save-goal-btn" class="action-btn primary">Save</button>
+							<button id="cancel-goal-btn" class="action-btn secondary">Cancel</button>
+						</div>
+					</div>
+
+					<div class="menu-grid">
+						<button id="begin-btn" class="menu-btn-large primary">
+							<svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polygon points="5 3 19 12 5 21 5 3"></polygon>
+							</svg>
+							<span>Begin a Pomo</span>
+						</button>
+
+						<button id="manage-tasks-btn" class="menu-btn-small">
+							<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M9 11l3 3L22 4"></path>
+								<path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+							</svg>
+							<span>Tasks</span>
+						</button>
+						
+						<button id="log-btn" class="menu-btn-small">
+							<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M12 5v14M5 12h14"></path>
+							</svg>
+							<span>Log</span>
+						</button>
+						
+						<button id="view-btn" class="menu-btn-small">
+							<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"></path>
+							</svg>
+							<span>Summary</span>
+						</button>
+						
+						<button id="data-btn" class="menu-btn-small">
+							<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"></path>
+							</svg>
+							<span>Import/Export</span>
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<div id="tasks-view" class="view">
+				<div class="tasks-container">
+					<h2>Manage Today's Tasks</h2>
+					
+				
+
+					<div class="tasks-list-section">
+						<h3>Today's Tasks</h3>
+						<div id="tasks-list" class="tasks-list"></div>
+					</div>
+
+						<div class="add-task-section">
+						<h3>Add New Task</h3>
+						<div class="form-group">
+							<label for="new-task-subject">Subject</label>
+							<input type="text" id="new-task-subject" list="subject-suggestions-tasks" placeholder="e.g., Programming, Biology">
+							<datalist id="subject-suggestions-tasks"></datalist>
+						</div>
+						<div class="form-group">
+							<label for="new-task-name">Task Name</label>
+							<input type="text" id="new-task-name" placeholder="e.g., Past papers, Quiz, Flashcards">
+						</div>
+						<button id="add-task-btn" class="action-btn primary">Add Task</button>
+					</div>
+
+					<button id="back-from-tasks-btn" class="action-btn secondary">Back to Menu</button>
+				</div>
+			</div>
+
+			<div id="begin-view" class="view">
+				<div class="form-container">
+					<h2>Build Your Pomodoro Cycle</h2>
+					
+					<div class="task-selection">
+						<label>Choose a task or enter custom:</label>
+						<div id="task-list" class="task-list"></div>
+						<div class="custom-task-option">
+							<div class="custom-radio-label">
+								<input type="radio" name="task-choice" id="custom-task-radio" value="custom">
+								<label for="custom-task-radio">Custom:</label>
+							</div>
+							<div class="custom-inputs">
+								<input type="text" id="custom-subject-input" list="subject-suggestions" placeholder="Subject (e.g., Programming)">
+								<datalist id="subject-suggestions"></datalist>
+								<input type="text" id="custom-task-input" placeholder="Task (e.g., Debug login)">
+							</div>
+						</div>
+					</div>
+
+					<div class="cycle-builder-section">
+						<div class="builder-header">
+							<h3>Cycle</h3>
+							<button id="reset-classic-btn" class="action-btn secondary small">Reset to Classic</button>
+						</div>
+						
+						<div id="cycle-blocks" class="cycle-blocks"></div>
+						
+						<div class="add-block-section">
+							<button id="add-work-btn" class="add-block-btn work">
+								<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M12 5v14M5 12h14"></path>
+								</svg>
+								<span>Work</span>
+							</button>
+							<button id="add-short-break-btn" class="add-block-btn short-break">
+								<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M12 5v14M5 12h14"></path>
+								</svg>
+								<span>Short Break</span>
+							</button>
+							<button id="add-long-break-btn" class="add-block-btn long-break">
+								<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M12 5v14M5 12h14"></path>
+								</svg>
+								<span>Long Break</span>
+							</button>
+						</div>
+					</div>
+					
+					<div class="form-actions">
+						<button id="start-cycle-btn" class="action-btn primary">Start Cycle</button>
+						<button id="cancel-begin-btn" class="action-btn secondary">Cancel</button>
+					</div>
+				</div>
+			</div>
+
+			<div id="timer-view" class="view">
+				<div class="timer-container">
+					<div id="timer-schedule" class="timer-schedule">
+						<div class="schedule-item">
+							<span class="schedule-label" id="next-phase-label">Next phase starts:</span>
+							<span id="next-start-time" class="schedule-time">--:--</span>
+						</div>
+						<div class="schedule-item">
+							<span class="schedule-label">Cycle completes:</span>
+							<span id="cycle-end-time" class="schedule-time">--:--</span>
+						</div>
+					</div>
+					<div id="timer-topic" class="timer-topic"></div>
+					
+					<div class="timer-circle-container">
+						<svg class="progress-ring" viewBox="0 0 200 200">
+							<circle class="progress-ring-bg" cx="100" cy="100" r="90"></circle>
+							<circle class="progress-ring-circle" cx="100" cy="100" r="90"></circle>
+						</svg>
+						<div id="timer-display" class="timer-display">00:00</div>
+					</div>
+					
+					<div class="timer-actions">
+						<button id="pause-btn" class="action-btn">Pause</button>
+						<button id="end-cycle-btn" class="action-btn danger">End Cycle</button>
+					</div>
+				</div>
+			</div>
+
+			<div id="cycle-complete-view" class="view">
+				<div class="complete-container">
+					<h2>Cycle Complete!</h2>
+					<p id="cycle-message"></p>
+					<div class="form-actions">
+						<button id="start-another-btn" class="action-btn primary">Start Another Cycle</button>
+						<button id="back-to-menu-btn" class="action-btn secondary">Back to Menu</button>
+					</div>
+				</div>
+			</div>
+
+			<div id="log-view" class="view">
+				<div class="form-container">
+					<h2>Log a Completed Session</h2>
+					
+					<div class="form-group">
+						<label for="log-date-input">Date</label>
+						<input type="date" id="log-date-input">
+					</div>
+					
+					<div class="form-group">
+						<label for="log-minutes-input">Minutes</label>
+						<input type="number" id="log-minutes-input" min="1" step="1" placeholder="25">
+					</div>
+					
+					<div class="form-group">
+						<label for="log-topic-input">Subject</label>
+						<input type="text" id="log-topic-input" list="subject-suggestions-log" placeholder="What subject did you work on?">
+						<datalist id="subject-suggestions-log"></datalist>
+					</div>
+					
+					<div class="form-actions">
+						<button id="save-log-btn" class="action-btn primary">Save Log</button>
+						<button id="cancel-log-btn" class="action-btn secondary">Cancel</button>
+					</div>
+				</div>
+			</div>
+
+			<div id="summary-view" class="view">
+				<div class="summary-container">
+					<h2>Summary & Statistics</h2>
+					
+					<div id="stats-overview" class="stats-overview">
+						<div class="stat-card">
+							<div class="stat-label">Total Time</div>
+							<div id="stat-total" class="stat-value">0 min</div>
+						</div>
+						<div class="stat-card">
+							<div class="stat-label">This Week</div>
+							<div id="stat-week" class="stat-value">0 min</div>
+						</div>
+						<div class="stat-card">
+							<div class="stat-label">This Month</div>
+							<div id="stat-month" class="stat-value">0 min</div>
+						</div>
+						<div class="stat-card">
+							<div class="stat-label">Current Streak</div>
+							<div id="stat-streak" class="stat-value">0 days</div>
+						</div>
+						<div class="stat-card">
+							<div class="stat-label">Best Day</div>
+							<div id="stat-best-day" class="stat-value">—</div>
+						</div>
+						<div class="stat-card">
+							<div class="stat-label">Top Topic</div>
+							<div id="stat-top-topic" class="stat-value">—</div>
+						</div>
+					</div>
+					
+					<h3 class="section-title">Day-by-Day Breakdown</h3>
+					<div id="summary-content" class="summary-content"></div>
+					<button id="back-from-summary-btn" class="action-btn secondary">Back to Menu</button>
+				</div>
+			</div>
+
+			<div id="data-view" class="view">
+				<div class="data-container">
+					<h2>Import/Export Data</h2>
+					
+					<div class="data-section">
+						<h3>Export Data</h3>
+						<p>Download your Pomodoro data as JSON</p>
+						<button id="export-data-btn" class="action-btn">Export Data (pomo-data.json)</button>
+					</div>
+					
+					<div class="data-section">
+						<h3>Import Data</h3>
+						<p>Upload previously exported JSON file to restore your data</p>
+						<div class="import-section">
+							<label for="import-file" class="action-btn">Choose File</label>
+							<input type="file" id="import-file" accept=".json" style="display: none;">
+							<span id="import-filename"></span>
+						</div>
+					</div>
+					
+					<div class="data-section danger-zone">
+						<h3>Clear All Data</h3>
+						<p>Warning: This will permanently delete all your Pomodoro records</p>
+						<button id="clear-data-btn" class="action-btn danger">Clear All Data</button>
+					</div>
+					
+					<button id="back-from-data-btn" class="action-btn secondary">Back to Menu</button>
+				</div>
+			</div>
+		</main>
+
+		<div id="toast-container"></div>
+
+		<a href="/" class="home-button" aria-label="Return to homepage">↖</a>
+		
+		<script src="pomo.js?version=2.0"></script>
+	</body>
+</html>

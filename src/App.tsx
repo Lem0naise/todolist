@@ -8,6 +8,7 @@ import type { Tab } from "./components/Nav";
 import { CombinedView } from "./components/home/CombinedView";
 import { TodayView } from "./components/schedule/TodayView";
 import { TodosView } from "./components/todos/TodosView";
+import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 
 function MainApp() {
@@ -51,6 +52,8 @@ function MainApp() {
         setActiveTab("today");
       } else if (e.key === "3" && !e.metaKey && !e.ctrlKey) {
         setActiveTab("todos");
+      } else if (e.key === "4" && !e.metaKey && !e.ctrlKey) {
+        setActiveTab("pomo");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -81,6 +84,7 @@ function MainApp() {
         {activeTab === "todos" && (
           <TodosView onNavigateToDate={handleNavigateToDate} />
         )}
+        {activeTab === "pomo" && <PomoView />}
         {activeTab === "settings" && (
           <SettingsView onSignOut={handleSignOut} />
         )}

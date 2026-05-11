@@ -16,6 +16,7 @@ import type * as ignored from "../ignored.js";
 import type * as moduleMatcher from "../moduleMatcher.js";
 import type * as modules from "../modules.js";
 import type * as occurrences from "../occurrences.js";
+import type * as pomo from "../pomo.js";
 import type * as timetable from "../timetable.js";
 import type * as todos from "../todos.js";
 
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   moduleMatcher: typeof moduleMatcher;
   modules: typeof modules;
   occurrences: typeof occurrences;
+  pomo: typeof pomo;
   timetable: typeof timetable;
   todos: typeof todos;
 }>;
