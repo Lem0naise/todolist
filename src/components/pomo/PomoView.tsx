@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { PomoTimer } from "./PomoTimer";
+import { getTimerInstance, startTimer, stopTimer } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -14,10 +14,12 @@ import {
   type PomoSettings,
   type CycleBlock,
 } from "./usePomoData";
+import type { Tab } from "../Nav";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
 
-const CIRCUMFERENCE = 2 * Math.PI * 90;
+const RING_RADIUS = 130;
+const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function formatTime(date: Date) {
   const h = date.getHours();
@@ -39,8 +41,16 @@ function genBlockId() {
   return nextBlockId++;
 }
 
-export function PomoView() {
-  const [view, setView] = useState<PomoView>("menu");
+export function PomoView({
+  pomoTick,
+}: {
+  pomoTick: number;
+  activeTab: Tab;
+}) {
+  const [view, setView] = useState<PomoView>(() => {
+    const timer = getTimerInstance();
+    return timer?.isRunning ? "timer" : "menu";
+  });
   const [settings, setSettings] = useState<PomoSettings>(loadSettings);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -58,6 +68,8 @@ export function PomoView() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const timer = getTimerInstance();
+
   return (
     <div className="p-3 max-w-2xl mx-auto pb-24">
       <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">
@@ -69,6 +81,8 @@ export function PomoView() {
           settings={settings}
           onUpdateSettings={updateSettings}
           sessions={sessions}
+          hasActiveTimer={!!timer?.isRunning}
+          onResume={() => setView("timer")}
           onBegin={() => setView("begin")}
           onLog={() => setView("log")}
           onSummary={() => setView("summary")}
@@ -79,16 +93,15 @@ export function PomoView() {
           settings={settings}
           todos={todos}
           onStart={(blocks, topic, taskName) => {
-            setView("timer");
             startTimer(blocks, topic, taskName);
+            setView("timer");
           }}
           onCancel={() => setView("menu")}
         />
       )}
       {view === "timer" && (
         <TimerView
-          settings={settings}
-          sessions={sessions}
+          pomoTick={pomoTick}
           addSession={addSession}
           onComplete={() => setView("complete")}
           onEnd={() => setView("menu")}
@@ -120,7 +133,7 @@ export function PomoView() {
       {toast && (
         <div className="fixed top-4 right-4 z-[100] pointer-events-none">
           <div
-            className={`px-4 py-3 rounded-xl shadow-lg border text-sm font-bold pointer-events-auto transition-all animate-pulse ${
+            className={`px-4 py-3 rounded-xl shadow-lg border text-sm font-bold pointer-events-auto ${
               toast.type === "success"
                 ? "bg-mint-50 border-mint-200 text-mint-600"
                 : "bg-rose-50 border-rose-200 text-rose-600"
@@ -134,19 +147,13 @@ export function PomoView() {
   );
 }
 
-/* Use a module-level variable to hold the timer instance across renders */
-let timerInstance: PomoTimer | null = null;
-
-function startTimer(blocks: CycleBlock[], topic: string, taskName: string) {
-  timerInstance = new PomoTimer();
-  timerInstance.initCycleWithBlocks(blocks, topic, taskName);
-}
-
 /* ── Menu View ── */
 function MenuView({
   settings,
   onUpdateSettings,
   sessions,
+  hasActiveTimer,
+  onResume,
   onBegin,
   onLog,
   onSummary,
@@ -154,6 +161,8 @@ function MenuView({
   settings: PomoSettings;
   onUpdateSettings: (s: PomoSettings) => void;
   sessions: PomoSession[];
+  hasActiveTimer: boolean;
+  onResume: () => void;
   onBegin: () => void;
   onLog: () => void;
   onSummary: () => void;
@@ -229,15 +238,27 @@ function MenuView({
 
       {/* Menu Grid */}
       <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={onBegin}
-          className="col-span-2 py-8 bg-rose-400 hover:bg-rose-500 text-white rounded-2xl shadow-sm transition-all hover:shadow-md flex items-center justify-center gap-4"
-        >
-          <svg className="w-10 h-10 fill-white" viewBox="0 0 24 24">
-            <polygon points="5,3 19,12 5,21" />
-          </svg>
-          <span className="text-xl font-bold font-hand text-3xl">Begin</span>
-        </button>
+        {hasActiveTimer ? (
+          <button
+            onClick={onResume}
+            className="col-span-2 py-8 bg-rose-400 hover:bg-rose-500 text-white rounded-2xl shadow-sm transition-all hover:shadow-md flex items-center justify-center gap-4 animate-pulse"
+          >
+            <svg className="w-10 h-10 fill-white" viewBox="0 0 24 24">
+              <polygon points="5,3 19,12 5,21" />
+            </svg>
+            <span className="text-xl font-bold font-hand text-3xl">Resume</span>
+          </button>
+        ) : (
+          <button
+            onClick={onBegin}
+            className="col-span-2 py-8 bg-rose-400 hover:bg-rose-500 text-white rounded-2xl shadow-sm transition-all hover:shadow-md flex items-center justify-center gap-4"
+          >
+            <svg className="w-10 h-10 fill-white" viewBox="0 0 24 24">
+              <polygon points="5,3 19,12 5,21" />
+            </svg>
+            <span className="text-xl font-bold font-hand text-3xl">Begin</span>
+          </button>
+        )}
 
         <button
           onClick={onLog}
@@ -510,53 +531,34 @@ function BeginView({
 
 /* ── Timer View ── */
 function TimerView({
+  pomoTick,
   addSession,
   onComplete,
   onEnd,
   showToast,
 }: {
-  settings: PomoSettings;
-  sessions: { date: string }[];
+  pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
   onComplete: () => void;
   onEnd: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
 }) {
-  const [, setTick] = useState(0);
-  const timer = timerInstance;
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timer = getTimerInstance();
+  const prevPhaseRef = useRef<number | null>(null);
 
-  const updateDisplay = useCallback(() => {
-    if (!timer) return;
-    if (timer.isComplete()) {
-      if (timer.phase?.type === "work") {
-        const d = new Date();
-        addSession(
-          d.toISOString().split("T")[0],
-          d.toTimeString().split(" ")[0],
-          timer.duration,
-          timer.topic,
-        );
-      }
-      const hasMore = timer.advancePhase();
-      if (!hasMore || timer.isCycleComplete()) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+  useEffect(() => {
+    if (!timer?.isRunning) return;
+    const currentIdx = timer.currentPhaseIndex;
+    if (prevPhaseRef.current !== null && prevPhaseRef.current !== currentIdx) {
+      if (timer.isCycleComplete()) {
+        stopTimer();
         onComplete();
       } else {
         showToast(`${timer.phase?.label} started!`, "success");
       }
     }
-    setTick((t) => t + 1);
-  }, [timer, addSession, onComplete, showToast]);
-
-  useEffect(() => {
-    if (!timer) return;
-    intervalRef.current = setInterval(updateDisplay, 200);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateDisplay]);
+    prevPhaseRef.current = currentIdx;
+  }, [pomoTick, timer, onComplete, showToast]);
 
   if (!timer || !timer.phase) {
     return (
@@ -577,6 +579,7 @@ function TimerView({
     } else {
       timer.stop();
     }
+    stopTimer();
     onEnd();
   };
 
@@ -586,7 +589,6 @@ function TimerView({
     } else {
       timer.pause();
     }
-    setTick((t) => t + 1);
   };
 
   const secondsLeft = timer.getTimeLeft();
@@ -641,27 +643,27 @@ function TimerView({
         )}
       </div>
 
-      {/* Timer ring */}
-      <div className="relative w-64 h-64 mx-auto flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 200 200">
+      {/* Timer ring — bigger and thicker */}
+      <div className="relative w-80 h-80 mx-auto flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
           <circle
-            cx="100" cy="100" r="90"
+            cx="140" cy="140" r={RING_RADIUS}
             fill="none"
             stroke="#e8e2d9"
-            strokeWidth="6"
+            strokeWidth="10"
           />
           <circle
-            cx="100" cy="100" r="90"
+            cx="140" cy="140" r={RING_RADIUS}
             fill="none"
             stroke={ringColor}
-            strokeWidth="6"
+            strokeWidth="10"
             strokeLinecap="round"
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={offset}
             className="transition-all duration-300"
           />
         </svg>
-        <span className={`text-5xl font-bold font-pomo relative z-10 ${textColor}`}>
+        <span className={`text-6xl font-bold font-pomo relative z-10 ${textColor}`}>
           {displayText}
         </span>
       </div>
@@ -698,8 +700,8 @@ function CompleteView({
   onRestart: () => void;
   onMenu: () => void;
 }) {
-  const mins = timerInstance?.getCompletedWorkMinutes() ?? 0;
-  const topic = timerInstance?.topic ?? "";
+  const mins = getTimerInstance()?.getCompletedWorkMinutes() ?? 0;
+  const topic = getTimerInstance()?.topic ?? "";
 
   return (
     <div className="text-center space-y-6 py-12">

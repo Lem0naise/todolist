@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
@@ -10,16 +10,19 @@ import { TodayView } from "./components/schedule/TodayView";
 import { TodosView } from "./components/todos/TodosView";
 import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
+import { FloatingPomo } from "./components/pomo/FloatingPomo";
+import { getTimerInstance } from "./components/pomo/timerState";
+import { usePomoData } from "./components/pomo/usePomoData";
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
-  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(
-    undefined,
-  );
+  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
+  const [pomoTick, setPomoTick] = useState(0);
 
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
+  const { addSession } = usePomoData();
 
   const processMissed = useMutation(api.occurrences.processMissedEvents);
   useEffect(() => {
@@ -39,6 +42,35 @@ function MainApp() {
     setNavigateToDate(date);
     setActiveTab("today");
   };
+
+  // Pomo timer interval — runs continuously at App level so it survives tab switches
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    tickRef.current = setInterval(() => {
+      const timer = getTimerInstance();
+      if (!timer || !timer.isRunning) return;
+
+      if (timer.isComplete()) {
+        if (timer.phase?.type === "work") {
+          const d = new Date();
+          addSession(
+            d.toISOString().split("T")[0],
+            d.toTimeString().split(" ")[0],
+            timer.duration,
+            timer.topic,
+          );
+        }
+        const hasMore = timer.advancePhase();
+        if (!hasMore || timer.isCycleComplete()) {
+          // cycle complete — handled by PomoView via pomoTick
+        }
+      }
+      setPomoTick((t) => t + 1);
+    }, 200);
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+    };
+  }, [addSession]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -60,6 +92,10 @@ function MainApp() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const timer = getTimerInstance();
+  const showFloating =
+    activeTab !== "pomo" && timer?.isRunning && timer.phase;
+
   return (
     <div className="h-screen flex flex-col bg-cream">
       <Nav
@@ -68,7 +104,7 @@ function MainApp() {
         todoBadge={todoBadge}
       />
 
-      <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0">
+      <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0 relative">
         {activeTab === "combined" && (
           <CombinedView
             onGoToTodos={() => setActiveTab("todos")}
@@ -84,9 +120,21 @@ function MainApp() {
         {activeTab === "todos" && (
           <TodosView onNavigateToDate={handleNavigateToDate} />
         )}
-        {activeTab === "pomo" && <PomoView />}
+        {activeTab === "pomo" && (
+          <PomoView
+            pomoTick={pomoTick}
+            activeTab={activeTab}
+          />
+        )}
         {activeTab === "settings" && (
           <SettingsView onSignOut={handleSignOut} />
+        )}
+
+        {showFloating && (
+          <FloatingPomo
+            timer={timer!}
+            onNavigate={() => setActiveTab("pomo")}
+          />
         )}
       </div>
     </div>
