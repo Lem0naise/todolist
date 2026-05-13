@@ -3,6 +3,8 @@ import type { CycleBlock } from "./usePomoData";
 
 let instance: PomoTimer | null = null;
 
+export let lastCompletedInfo: { mins: number; topic: string } = { mins: 0, topic: "" };
+
 export function getTimerInstance(): PomoTimer | null {
   return instance;
 }
@@ -14,6 +16,10 @@ export function startTimer(blocks: CycleBlock[], topic: string, taskName: string
 }
 
 export function stopTimer(): void {
+  lastCompletedInfo = {
+    mins: instance?.getCompletedWorkMinutes() ?? 0,
+    topic: instance?.topic ?? "",
+  };
   if (instance) {
     instance.stop();
   }

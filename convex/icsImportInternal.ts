@@ -37,12 +37,21 @@ export const storeIcsData = internalMutation({
     const feedId = await (async () => {
       if (existingFeed) {
         await ctx.db.patch(existingFeed._id, { lastSynced: Date.now() });
-        // Remove old events for this feed before re-importing
+        // Remove old events and their occurrences for this feed before re-importing
         const oldEvents = await ctx.db
           .query("timetableEvents")
           .withIndex("by_feed", (q) => q.eq("icalFeedId", existingFeed._id))
           .collect();
-        for (const e of oldEvents) await ctx.db.delete(e._id);
+        for (const e of oldEvents) {
+          const oldOccurrences = await ctx.db
+            .query("occurrences")
+            .withIndex("by_event", (q) => q.eq("eventId", e._id))
+            .collect();
+          for (const occ of oldOccurrences) {
+            await ctx.db.delete(occ._id);
+          }
+          await ctx.db.delete(e._id);
+        }
         return existingFeed._id;
       } else {
         return await ctx.db.insert("icalFeeds", {

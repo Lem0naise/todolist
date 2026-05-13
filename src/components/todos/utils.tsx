@@ -65,7 +65,7 @@ export const CATEGORY_META: Record<Category, {
 };
 
 export function formatShortDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-GB", {
+  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
   });

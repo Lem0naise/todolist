@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getTimerInstance, startTimer, stopTimer } from "./timerState";
+import { getTimerInstance, startTimer, stopTimer, lastCompletedInfo } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -771,8 +771,7 @@ function CompleteView({
   onRestart: () => void;
   onMenu: () => void;
 }) {
-  const mins = getTimerInstance()?.getCompletedWorkMinutes() ?? 0;
-  const topic = getTimerInstance()?.topic ?? "";
+  const { mins, topic } = lastCompletedInfo;
 
   return (
     <div className="text-center space-y-6 py-12">

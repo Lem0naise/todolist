@@ -90,8 +90,8 @@ function TimetableSettings() {
 
   const handleDeleteFeed = async (feed: Feed) => {
     if (!confirm(`Delete "${feed.name}" and all its events?`)) return;
-    await removeByFeed({ feedId: feed._id });
     await removeFeed({ id: feed._id });
+    await removeByFeed({ feedId: feed._id });
   };
 
   const manualEvents = events?.filter((e) => e.source === "manual") ?? [];

@@ -11,7 +11,7 @@ import { TodosView } from "./components/todos/TodosView";
 import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
-import { getTimerInstance } from "./components/pomo/timerState";
+import { getTimerInstance, stopTimer } from "./components/pomo/timerState";
 import { usePomoData } from "./components/pomo/usePomoData";
 
 function MainApp() {
@@ -62,7 +62,7 @@ function MainApp() {
         }
         const hasMore = timer.advancePhase();
         if (!hasMore || timer.isCycleComplete()) {
-          // cycle complete — handled by PomoView via pomoTick
+          stopTimer();
         }
       }
       setPomoTick((t) => t + 1);

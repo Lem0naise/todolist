@@ -99,6 +99,9 @@ export class PomoTimer {
     if (this.endTime) {
       this.endTime = new Date(this.endTime.getTime() + pauseDuration);
     }
+    if (this.startTime) {
+      this.startTime = new Date(this.startTime.getTime() + pauseDuration);
+    }
     this.isPaused = false;
   }
 
