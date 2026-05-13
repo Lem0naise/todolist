@@ -39,9 +39,8 @@ function formatDuration(mins: number) {
   return `${m} min`;
 }
 
-let nextBlockId = Date.now();
 function genBlockId() {
-  return nextBlockId++;
+  return Date.now() + Math.floor(Math.random() * 1000000);
 }
 
 export function PomoView({
@@ -976,10 +975,10 @@ function SummaryView({
 
           <div className="max-h-72 overflow-y-auto">
             {[...totals].reverse().map((day) => {
-              const dayTotal = Object.values(day.topics as Record<string, number>).reduce((a, b) => a + b, 0);
+              const dayTotal = Math.round(Object.values(day.topics as Record<string, number>).reduce((a, b) => a + b, 0));
               const h = Math.floor(dayTotal / 60);
-              const m = Math.round((dayTotal % 60) * 100) / 100;
-              const maxMins = Math.max(...totals.map((d) => Object.values(d.topics as Record<string, number>).reduce((a, b) => a + b, 0)));
+              const m = dayTotal % 60;
+              const maxMins = Math.max(...totals.map((d) => Math.round(Object.values(d.topics as Record<string, number>).reduce((a, b) => a + b, 0))));
               const todayStr = new Date().toISOString().split("T")[0];
               const isToday = day.date === todayStr;
               return (
@@ -992,7 +991,7 @@ function SummaryView({
                     {isToday && " · today"}
                   </span>
                   <span className="w-16 text-xs font-bold text-stone-400 text-right flex-shrink-0">
-                    {h > 0 ? `${h}h${String(m).padStart(2, "0").replace(/\.\d+/, "")}m` : `${m}m`}
+                    {h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`}
                   </span>
                   <div className="flex-1 flex gap-0.5 items-center">
                     <div className="flex-1 h-4 bg-cream-100 rounded-full overflow-hidden flex">
@@ -1003,7 +1002,7 @@ function SummaryView({
                             key={topic}
                             className="h-full"
                             style={{ width: `${w}%`, backgroundColor: topicMap.current.get(topic) }}
-                            title={`${topic}: ${mins.toFixed(1)}m`}
+                            title={`${topic}: ${mins.toFixed(0)}m`}
                           />
                         );
                       })}

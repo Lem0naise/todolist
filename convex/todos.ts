@@ -20,14 +20,19 @@ export const list = query({
   handler: async (ctx, { includeCompleted }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
-    const todos = await ctx.db
-      .query("todos")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+    const todos = includeCompleted
+      ? await ctx.db
+          .query("todos")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .collect()
+      : await ctx.db
+          .query("todos")
+          .withIndex("by_user_completed", (q) =>
+            q.eq("userId", userId).eq("completed", false),
+          )
+          .collect();
 
-    const filtered = includeCompleted
-      ? todos
-      : todos.filter((t) => !t.completed);
+    const filtered = todos;
 
     // Sort: within each category, manualOrder first, then highPriority, then dueDate, then createdAt
     const sorted = filtered.sort((a, b) => {
@@ -51,21 +56,27 @@ export const list = query({
       return a.createdAt - b.createdAt;
     });
 
-    // Join: occurrence date + linked event title + module name
-    return await Promise.all(
-      sorted.map(async (todo) => {
-        const sourceOccurrenceDate = todo.sourceOccurrenceId
-          ? (await ctx.db.get(todo.sourceOccurrenceId))?.date as string | undefined
-          : undefined;
-        const linkedEventTitle = todo.linkedEventId
-          ? (await ctx.db.get(todo.linkedEventId))?.title as string | undefined
-          : undefined;
-        const moduleName = todo.moduleId
-          ? (await ctx.db.get(todo.moduleId))?.name as string | undefined
-          : undefined;
-        return { ...todo, sourceOccurrenceDate, linkedEventTitle, moduleName };
-      })
-    );
+    // Batch-fetch all related entities to avoid N+1 queries
+    const occurrenceIds = [...new Set(sorted.map(t => t.sourceOccurrenceId).filter(Boolean))];
+    const eventIds = [...new Set(sorted.map(t => t.linkedEventId).filter(Boolean))];
+    const moduleIds = [...new Set(sorted.map(t => t.moduleId).filter(Boolean))];
+
+    const [occurrences, events, modules] = await Promise.all([
+      Promise.all(occurrenceIds.map(id => ctx.db.get(id!))),
+      Promise.all(eventIds.map(id => ctx.db.get(id!))),
+      Promise.all(moduleIds.map(id => ctx.db.get(id!))),
+    ]);
+
+    const occMap = new Map(occurrences.filter(Boolean).map(o => [o!._id, o]));
+    const eventMap = new Map(events.filter(Boolean).map(e => [e!._id, e]));
+    const modMap = new Map(modules.filter(Boolean).map(m => [m!._id, m]));
+
+    return sorted.map((todo) => ({
+      ...todo,
+      sourceOccurrenceDate: todo.sourceOccurrenceId ? occMap.get(todo.sourceOccurrenceId)?.date as string | undefined : undefined,
+      linkedEventTitle: todo.linkedEventId ? eventMap.get(todo.linkedEventId)?.title as string | undefined : undefined,
+      moduleName: todo.moduleId ? modMap.get(todo.moduleId)?.name as string | undefined : undefined,
+    }));
   },
 });
 

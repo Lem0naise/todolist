@@ -91,17 +91,13 @@ export function TodayView({
     date: string;
   } | null>(null);
 
-  const [prevInitialDate, setPrevInitialDate] = useState(initialDate);
-  if (initialDate !== prevInitialDate) {
-    setPrevInitialDate(initialDate);
+  useEffect(() => {
     if (initialDate) setSelectedDate(initialDate);
-  }
+  }, [initialDate]);
 
-  const [prevToday, setPrevToday] = useState(todayStr);
-  if (todayStr !== prevToday) {
-    setPrevToday(todayStr);
+  useEffect(() => {
     setSelectedDate(todayStr);
-  }
+  }, [todayStr]);
 
   const dateInfo = getDateInfo(selectedDate);
   const weekDays = getWeekDays(selectedDate);
@@ -119,6 +115,7 @@ export function TodayView({
 
   const setStatus = useMutation(api.occurrences.setStatus);
   const convertToTodo = useMutation(api.occurrences.convertToTodo);
+  const completeTodo = useMutation(api.todos.complete);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -138,6 +135,13 @@ export function TodayView({
       date: dateOverride ?? selectedDate,
       status: newStatus,
     });
+    // If we're marking a "todo" occurrence as done, also complete the linked catchup todo
+    if (currentStatus === "todo" && event.occurrence?.linkedTodo?._id) {
+      await completeTodo({
+        id: event.occurrence.linkedTodo._id,
+        completed: true,
+      });
+    }
     if (selectedWeekEvent && selectedWeekEvent.event._id === event._id) {
       setSelectedWeekEvent(null);
     }

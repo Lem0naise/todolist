@@ -19,7 +19,7 @@ type TodayEvent = {
 function getTimeOffset(timeStr: string) {
   const [h, m] = timeStr.split(":").map(Number);
   const pxPerHour = 56;
-  const offsetHours = h - 8 + m / 60;
+  const offsetHours = Math.max(0, h - 8 + m / 60);
   return offsetHours * pxPerHour;
 }
 

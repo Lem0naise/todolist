@@ -31,7 +31,9 @@ function MainApp() {
     if (localStorage.getItem(key)) return;
     processMissed({ today: todayStr })
       .then(() => localStorage.setItem(key, "1"))
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("Failed to process missed events:", err);
+      });
   }, [processMissed]);
 
   const handleSignOut = async () => {

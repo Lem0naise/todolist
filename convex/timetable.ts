@@ -68,33 +68,42 @@ export const getForDate = query({
       )
       .collect();
 
-    // Enrich each event: include occurrence + linked todo data + module name
-    return await Promise.all(
-      todayEvents.map(async (event) => {
-        const moduleName = event.moduleId
-          ? (await ctx.db.get(event.moduleId))?.name as string | undefined
-          : undefined;
-        const occ = occurrences.find((o) => o.eventId === event._id) ?? null;
-        if (!occ) return { ...event, moduleName, occurrence: null };
+    // Batch-fetch modules and linked todos to avoid N+1 queries
+    const moduleIds = [...new Set(todayEvents.map(e => e.moduleId).filter(Boolean))];
+    const todoIds = [...new Set(occurrences.filter(o => o.status === "todo" && o.todoId).map(o => o.todoId!))];
 
-        let linkedTodo = undefined;
-        if (occ.status === "todo" && occ.todoId) {
-          const todo = await ctx.db.get(occ.todoId);
-          if (todo) {
-            linkedTodo = {
-              _id: todo._id,
-              title: todo.title,
-              description: todo.description,
-              dueDate: todo.dueDate,
-              highPriority: todo.highPriority,
-              completed: todo.completed,
-            };
-          }
+    const [moduleDocs, todoDocs] = await Promise.all([
+      Promise.all(moduleIds.map(id => ctx.db.get(id!))),
+      Promise.all(todoIds.map(id => ctx.db.get(id!))),
+    ]);
+
+    const modMap = new Map(moduleDocs.filter(Boolean).map(m => [m!._id, m]));
+    const todoMap = new Map(todoDocs.filter(Boolean).map(t => [t!._id, t]));
+
+    return todayEvents.map((event) => {
+      const moduleName = event.moduleId
+        ? (modMap.get(event.moduleId)?.name as string | undefined)
+        : undefined;
+      const occ = occurrences.find((o) => o.eventId === event._id) ?? null;
+      if (!occ) return { ...event, moduleName, occurrence: null };
+
+      let linkedTodo = undefined;
+      if (occ.status === "todo" && occ.todoId) {
+        const todo = todoMap.get(occ.todoId);
+        if (todo) {
+          linkedTodo = {
+            _id: todo._id,
+            title: todo.title,
+            description: todo.description,
+            dueDate: todo.dueDate,
+            highPriority: todo.highPriority,
+            completed: todo.completed,
+          };
         }
+      }
 
-        return { ...event, moduleName, occurrence: { ...occ, linkedTodo } };
-      })
-    );
+      return { ...event, moduleName, occurrence: { ...occ, linkedTodo } };
+    });
   },
 });
 

@@ -158,7 +158,7 @@ export function getTotalsByDate(sessions: PomoSession[]) {
   for (const session of sessions) {
     if (!totals[session.date]) totals[session.date] = {};
     const topic = session.topic || "Untitled";
-    totals[session.date][topic] = (totals[session.date][topic] || 0) + session.minutes;
+    totals[session.date][topic] = Math.round((totals[session.date][topic] || 0) + session.minutes);
   }
   const dates = Object.keys(totals).sort();
   if (dates.length === 0) return [];

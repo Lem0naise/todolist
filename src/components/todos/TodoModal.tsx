@@ -120,13 +120,12 @@ export function TodoModal({ onClose, editTodo }: Props) {
     }
   };
 
-  const uniqueClassTitles = Array.from(
-    new Set((timetableEvents ?? []).map((e) => e.title)),
-  ).sort();
-  const getClassId = (title: string) =>
-    timetableEvents?.find((e) => e.title === title)?._id;
-  const currentClassTitle =
-    timetableEvents?.find((e) => e._id === linkedEventId)?.title ?? "";
+  const uniqueClassTitles = (timetableEvents ?? []).map((e) => ({
+    _id: e._id,
+    display: `${e.title}${e.moduleName ? ` (${e.moduleName})` : ""}`,
+  }));
+
+  const currentClassId = timetableEvents?.find((e) => e._id === linkedEventId)?._id ?? "";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
@@ -221,17 +220,16 @@ export function TodoModal({ onClose, editTodo }: Props) {
                 Link Class
               </label>
               <select
-                value={currentClassTitle}
+                value={currentClassId}
                 onChange={(e) => {
-                  const id = getClassId(e.target.value);
-                  setLinkedEventId(id ?? "");
+                  setLinkedEventId(e.target.value);
                 }}
                 className="w-full px-3 py-2 text-sm font-semibold bg-white border border-cream-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 text-stone-700 appearance-none transition-all"
               >
                 <option value="">None</option>
                 {uniqueClassTitles.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                  <option key={t._id} value={t._id}>
+                    {t.display}
                   </option>
                 ))}
               </select>

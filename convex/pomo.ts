@@ -6,7 +6,7 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
+    if (!userId) return null;
     return await ctx.db
       .query("pomoSessions")
       .withIndex("by_user", (q) => q.eq("userId", userId))

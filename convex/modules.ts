@@ -35,13 +35,16 @@ export const update = mutation({
     patterns: v.optional(v.array(v.string())),
     color: v.optional(v.string()),
   },
-  handler: async (ctx, { id, ...updates }) => {
+  handler: async (ctx, { id, name, patterns, color }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const mod = await ctx.db.get(id);
     if (!mod || mod.userId !== userId) throw new Error("Not found");
-    const clean = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
-    await ctx.db.patch(id, clean);
+    const patch: Record<string, unknown> = {};
+    if (name !== undefined) patch.name = name;
+    if (patterns !== undefined) patch.patterns = patterns;
+    patch.color = color; // always include — undefined clears the field
+    await ctx.db.patch(id, patch);
   },
 });
 
