@@ -110,9 +110,16 @@ export class PomoTimer {
     }
     if (this.startTime) {
       const elapsed = (new Date().getTime() - this.startTime.getTime()) / 1000 / 60;
-      return Math.max(0.01, Math.round(elapsed * 100) / 100);
+      return Math.max(1, Math.round(elapsed));
     }
     return 0;
+  }
+
+  /** Save elapsed work from current phase, then skip to next */
+  skip(): number {
+    const elapsed = this.stop();
+    this.advancePhase();
+    return elapsed;
   }
 
   getTimeLeft(): number {

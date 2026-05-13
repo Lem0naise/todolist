@@ -63,3 +63,24 @@ export const clearAll = mutation({
     return sessions.length;
   },
 });
+
+export const fixRounding = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const sessions = await ctx.db
+      .query("pomoSessions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    let fixed = 0;
+    for (const s of sessions) {
+      const rounded = Math.round(s.minutes);
+      if (s.minutes !== rounded) {
+        await ctx.db.patch(s._id, { minutes: rounded });
+        fixed++;
+      }
+    }
+    return fixed;
+  },
+});

@@ -61,7 +61,7 @@ export function usePomoData() {
 
   const addSession = useCallback(
     (date: string, time: string, minutes: number, topic: string, taskId?: string, taskName?: string) => {
-      return addMutation({ date, time, minutes: Math.round(minutes * 100) / 100, topic, taskId: taskId as Id<"todos"> | undefined, taskName });
+      return addMutation({ date, time, minutes: Math.round(minutes), topic, taskId: taskId as Id<"todos"> | undefined, taskName });
     },
     [addMutation],
   );
@@ -82,9 +82,11 @@ export function usePomoData() {
 
 export function getTodayTotal(sessions: PomoSession[]): number {
   const today = new Date().toISOString().split("T")[0];
-  return sessions
-    .filter((s) => s.date === today)
-    .reduce((sum, s) => sum + s.minutes, 0);
+  return Math.round(
+    sessions
+      .filter((s) => s.date === today)
+      .reduce((sum, s) => sum + s.minutes, 0),
+  );
 }
 
 export function getStatistics(sessions: PomoSession[]) {
@@ -99,22 +101,22 @@ export function getStatistics(sessions: PomoSession[]) {
     };
   }
 
-  const total = sessions.reduce((sum, s) => sum + s.minutes, 0);
+  const total = Math.round(sessions.reduce((sum, s) => sum + s.minutes, 0));
 
   const now = new Date();
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoStr = weekAgo.toISOString().split("T")[0];
-  const thisWeek = sessions
+  const thisWeek = Math.round(sessions
     .filter((s) => s.date >= weekAgoStr)
-    .reduce((sum, s) => sum + s.minutes, 0);
+    .reduce((sum, s) => sum + s.minutes, 0));
 
   const monthAgo = new Date(now);
   monthAgo.setMonth(monthAgo.getMonth() - 1);
   const monthAgoStr = monthAgo.toISOString().split("T")[0];
-  const thisMonth = sessions
+  const thisMonth = Math.round(sessions
     .filter((s) => s.date >= monthAgoStr)
-    .reduce((sum, s) => sum + s.minutes, 0);
+    .reduce((sum, s) => sum + s.minutes, 0));
 
   const dates = [...new Set(sessions.map((s) => s.date))].sort().reverse();
   let currentStreak = 0;

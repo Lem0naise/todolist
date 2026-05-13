@@ -30,9 +30,12 @@ function formatTime(date: Date) {
 }
 
 function formatDuration(mins: number) {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h > 0) return `${h}h ${m}m`;
+  const rounded = Math.round(mins);
+  const h = Math.floor(rounded / 60);
+  const m = rounded % 60;
+  if (h > 0) {
+    return m === 0 ? `${h}h` : `${h}h ${m}m`;
+  }
   return `${m} min`;
 }
 
@@ -57,6 +60,8 @@ export function PomoView({
   const { sessions, addSession } = usePomoData();
   const todosQuery = useQuery(api.todos.list, { includeCompleted: false });
   const todos = (todosQuery ?? []) as { _id: string; title: string; moduleName?: string; category?: string }[];
+  const modulesQuery = useQuery(api.modules.list);
+  const modules = (modulesQuery ?? []) as { _id: string; name: string }[];
 
   const updateSettings = (s: PomoSettings) => {
     setSettings(s);
@@ -92,6 +97,7 @@ export function PomoView({
         <BeginView
           settings={settings}
           todos={todos}
+          modules={modules}
           onStart={(blocks, topic, taskName) => {
             startTimer(blocks, topic, taskName);
             setView("timer");
@@ -117,7 +123,7 @@ export function PomoView({
       {view === "log" && (
         <LogView
           todos={todos}
-          modules={[]}
+          modules={modules}
           addSession={addSession}
           onDone={() => { setView("menu"); showToast("Session logged!", "success"); }}
           onCancel={() => setView("menu")}
@@ -288,11 +294,13 @@ function MenuView({
 function BeginView({
   settings,
   todos,
+  modules,
   onStart,
   onCancel,
 }: {
   settings: PomoSettings;
   todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  modules: { _id: string; name: string }[];
   onStart: (blocks: CycleBlock[], topic: string, taskName: string) => void;
   onCancel: () => void;
 }) {
@@ -355,7 +363,13 @@ function BeginView({
   const blockClass = (b: CycleBlock) =>
     b.type === "work" ? "border-rose-200 bg-rose-50/40" : "border-mint-200 bg-mint-50/40";
 
-  const activeTodos = todos.filter((t) => t.category !== "lecture_catchup");
+  const activeTodos = todos;
+
+  // Unique subjects from modules + todos
+  const subjectOptions = [...new Set([
+    ...modules.map(m => m.name),
+    ...todos.map(t => t.moduleName).filter(Boolean) as string[],
+  ])].sort();
 
   return (
     <div className="space-y-4">
@@ -415,18 +429,21 @@ function BeginView({
 
         {selectedTask === "custom" && (
           <div className="flex gap-2 pl-7">
-            <input
-              type="text"
+            <select
               value={customSubject}
               onChange={(e) => { setCustomSubject(e.target.value); setSelectedTask("custom"); }}
-              placeholder="Subject"
-              className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
-            />
+              className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white text-stone-600"
+            >
+              <option value="">Subject...</option>
+              {subjectOptions.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
             <input
               type="text"
               value={customTask}
               onChange={(e) => { setCustomTask(e.target.value); setSelectedTask("custom"); }}
-              placeholder="Task"
+              placeholder="Task name"
               className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
               onKeyDown={(e) => { if (e.key === "Enter") handleStart(); }}
             />
@@ -583,6 +600,23 @@ function TimerView({
     onEnd();
   };
 
+  const handleSkip = () => {
+    if (timer.phase?.type === "work") {
+      const d = new Date();
+      const elapsed = timer.stop();
+      addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], elapsed, timer.topic);
+    } else {
+      timer.stop();
+    }
+    const hasMore = timer.advancePhase();
+    if (!hasMore || timer.isCycleComplete()) {
+      stopTimer();
+      onComplete();
+    } else {
+      showToast(`Skipped to ${timer.phase?.label}`, "success");
+    }
+  };
+
   const togglePause = () => {
     if (timer.isPaused) {
       timer.resume();
@@ -597,7 +631,6 @@ function TimerView({
   const progress = timer.getProgress();
   const offset = CIRCUMFERENCE - (progress / 100) * CIRCUMFERENCE;
   const isBreak = timer.phase.type === "break";
-  const schedule = timer.getScheduleInfo();
 
   const displayText = timer.isPaused
     ? "Paused"
@@ -610,30 +643,6 @@ function TimerView({
 
   return (
     <div className="text-center space-y-6">
-      {/* Schedule info */}
-      {schedule.nextPhaseTime && (
-        <div className="flex justify-center gap-6 text-xs">
-          <div className="flex flex-col items-center">
-            <span className="text-stone-400 uppercase tracking-wider font-bold text-[10px]">
-              {schedule.nextPhaseLabel} starts
-            </span>
-            <span className="text-stone-600 font-bold">
-              {formatTime(schedule.nextPhaseTime)}
-            </span>
-          </div>
-          {schedule.cycleEndTime && (
-            <div className="flex flex-col items-center">
-              <span className="text-stone-400 uppercase tracking-wider font-bold text-[10px]">
-                Cycle ends
-              </span>
-              <span className="text-stone-600 font-bold">
-                {formatTime(schedule.cycleEndTime)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Topic */}
       <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
         {isBreak ? (
@@ -643,7 +652,7 @@ function TimerView({
         )}
       </div>
 
-      {/* Timer ring — bigger and thicker */}
+      {/* Timer ring */}
       <div className="relative w-80 h-80 mx-auto flex items-center justify-center">
         <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
           <circle
@@ -670,23 +679,85 @@ function TimerView({
 
       {/* Phase label */}
       <p className={`text-sm font-bold uppercase tracking-wider ${isBreak ? "text-mint-500" : "text-rose-500"}`}>
-        {timer.phase.label}
+        {timer.phase.label} — {isBreak ? "Break" : "Work"}
       </p>
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center">
+      <div className="flex gap-2 justify-center">
         <button
           onClick={togglePause}
-          className="px-6 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+          className="px-5 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
         >
           {timer.isPaused ? "Resume" : "Pause"}
         </button>
         <button
+          onClick={handleSkip}
+          className="px-5 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold rounded-xl text-sm transition-colors border border-amber-200"
+        >
+          Skip
+        </button>
+        <button
           onClick={handleEndCycle}
-          className="px-6 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl text-sm transition-colors"
+          className="px-5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl text-sm transition-colors"
         >
           End
         </button>
+      </div>
+
+      {/* Future phases timeline */}
+      <PhaseTimeline timer={timer} />
+    </div>
+  );
+}
+
+function PhaseTimeline({ timer }: { timer: ReturnType<typeof getTimerInstance> }) {
+  if (!timer || !timer.cyclePhases.length) return null;
+
+  const base = timer.isPaused && timer.pausedTime
+    ? new Date(timer.pausedTime)
+    : !timer.isPaused && timer.endTime
+      ? new Date(timer.endTime)
+      : new Date();
+
+  const remaining = timer.cyclePhases.slice(timer.currentPhaseIndex);
+
+  // Pre-compute start times for each remaining phase
+  const phases: { phase: typeof remaining[0]; start: Date; isCurrent: boolean }[] = [];
+  let cursor = new Date(base);
+  for (let i = 0; i < remaining.length; i++) {
+    phases.push({ phase: remaining[i], start: new Date(cursor), isCurrent: i === 0 });
+    cursor = new Date(cursor.getTime() + remaining[i].duration * 60 * 1000);
+  }
+
+  return (
+    <div className="pt-2">
+      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2 text-center">
+        Upcoming
+      </p>
+      <div className="flex items-start gap-0 justify-center flex-wrap">
+        {phases.map(({ phase, start, isCurrent }, i) => {
+          const isWork = phase.type === "work";
+          const text = isWork ? "text-rose-500" : "text-mint-500";
+
+          return (
+            <div key={i} className="flex items-center">
+              <div className={`flex flex-col items-center px-2 py-1.5 rounded-lg ${isCurrent ? "bg-cream-100" : ""}`}>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${text}`}>
+                  {phase.label}
+                </span>
+                <span className="text-[11px] font-bold text-stone-500">
+                  {phase.duration}m
+                </span>
+                <span className="text-[9px] text-stone-400 mt-0.5">
+                  {formatTime(start)}
+                </span>
+              </div>
+              {i < phases.length - 1 && (
+                <div className="w-4 h-0.5 bg-cream-200 mt-3 flex-shrink-0" />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -742,8 +813,8 @@ function LogView({
   onDone,
   onCancel,
 }: {
-  todos: { title: string; moduleName?: string }[];
-  modules: { name: string }[];
+  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  modules: { _id: string; name: string }[];
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
   onDone: () => void;
   onCancel: () => void;
@@ -751,8 +822,22 @@ function LogView({
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [minutes, setMinutes] = useState("25");
   const [topic, setTopic] = useState("");
+  const [selectedTaskId, setSelectedTaskId] = useState("");
 
-  const allTopics = [...new Set([...todos.map((t) => t.moduleName).filter(Boolean), ...modules.map((m) => m.name)])];
+  const subjectOptions = [...new Set([
+    ...modules.map(m => m.name),
+    ...todos.map(t => t.moduleName).filter(Boolean) as string[],
+  ]  )].sort();
+
+  const handleTaskSelect = (id: string) => {
+    setSelectedTaskId(id);
+    if (id) {
+      const t = todos.find(td => td._id === id);
+      if (t) {
+        setTopic(t.moduleName || "");
+      }
+    }
+  };
 
   const handleSave = async () => {
     const mins = parseFloat(minutes);
@@ -788,23 +873,34 @@ function LogView({
           />
         </div>
         <div>
+          <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Task</label>
+          <select
+            value={selectedTaskId}
+            onChange={(e) => handleTaskSelect(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white text-stone-600"
+          >
+            <option value="">— None —</option>
+            {todos.map(t => (
+              <option key={t._id} value={t._id}>
+                {t.moduleName ? `${t.moduleName} — ` : ""}{t.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">
             Subject
           </label>
-          <input
-            type="text"
+          <select
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            list="pomo-subjects"
-            placeholder="e.g. Programming"
-            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
-            onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-          />
-          <datalist id="pomo-subjects">
-            {allTopics.map((t) => (
-              <option key={t} value={t!} />
+            className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white text-stone-600"
+          >
+            <option value="">— None —</option>
+            {subjectOptions.map(s => (
+              <option key={s} value={s}>{s}</option>
             ))}
-          </datalist>
+          </select>
         </div>
       </div>
 
@@ -880,34 +976,42 @@ function SummaryView({
           </div>
 
           <div className="max-h-72 overflow-y-auto">
-            {totals.map((day) => {
+            {[...totals].reverse().map((day) => {
               const dayTotal = Object.values(day.topics as Record<string, number>).reduce((a, b) => a + b, 0);
               const h = Math.floor(dayTotal / 60);
-              const m = dayTotal % 60;
+              const m = Math.round((dayTotal % 60) * 100) / 100;
               const maxMins = Math.max(...totals.map((d) => Object.values(d.topics as Record<string, number>).reduce((a, b) => a + b, 0)));
+              const todayStr = new Date().toISOString().split("T")[0];
+              const isToday = day.date === todayStr;
               return (
                 <div
                   key={day.date}
-                  className="flex items-center gap-3 px-4 py-2 border-b border-cream-50 text-sm"
+                  className={`flex items-center gap-3 px-4 py-2 border-b border-cream-50 text-sm ${isToday ? "bg-rose-50/30" : ""}`}
                 >
-                  <span className="w-24 text-xs font-bold text-stone-500 flex-shrink-0">
+                  <span className={`w-24 text-xs font-bold flex-shrink-0 ${isToday ? "text-rose-500" : "text-stone-500"}`}>
                     {new Date(day.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    {isToday && " · today"}
                   </span>
                   <span className="w-16 text-xs font-bold text-stone-400 text-right flex-shrink-0">
-                    {h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`}
+                    {h > 0 ? `${h}h${String(m).padStart(2, "0").replace(/\.\d+/, "")}m` : `${m}m`}
                   </span>
-                  <div className="flex-1 flex gap-0.5 h-2 rounded-full overflow-hidden">
-                    {Object.entries(day.topics as Record<string, number>).map(([topic, mins]) => {
-                      const w = maxMins > 0 ? (mins / maxMins) * 100 : 0;
-                      return (
-                        <div
-                          key={topic}
-                          className="h-full rounded-full"
-                          style={{ width: `${w}%`, backgroundColor: topicMap.current.get(topic) }}
-                          title={`${topic}: ${mins} min`}
-                        />
-                      );
-                    })}
+                  <div className="flex-1 flex gap-0.5 items-center">
+                    <div className="flex-1 h-4 bg-cream-100 rounded-full overflow-hidden flex">
+                      {Object.entries(day.topics as Record<string, number>).map(([topic, mins]) => {
+                        const w = maxMins > 0 ? (mins / maxMins) * 100 : 0;
+                        return (
+                          <div
+                            key={topic}
+                            className="h-full"
+                            style={{ width: `${w}%`, backgroundColor: topicMap.current.get(topic) }}
+                            title={`${topic}: ${mins.toFixed(1)}m`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className="text-[10px] font-bold text-stone-400 w-8 text-right flex-shrink-0">
+                      {dayTotal.toFixed(0)}
+                    </span>
                   </div>
                 </div>
               );
