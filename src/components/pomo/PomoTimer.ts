@@ -21,6 +21,7 @@ export class PomoTimer {
   pausedTime: Date | null = null;
   cyclePhases: TimerPhase[] = [];
   currentPhaseIndex = 0;
+  totalWorkMinutes = 0;
 
   initCycleWithBlocks(blocks: CycleBlock[]) {
     this.reset();
@@ -117,9 +118,17 @@ export class PomoTimer {
     }
     if (this.startTime) {
       const elapsed = (new Date().getTime() - this.startTime.getTime()) / 1000 / 60;
-      return Math.max(1, Math.round(elapsed));
+      const mins = Math.max(1, Math.round(elapsed));
+      if (this.phase?.type === "work") {
+        this.totalWorkMinutes += mins;
+      }
+      return mins;
     }
     return 0;
+  }
+
+  addWorkMinutes(mins: number) {
+    this.totalWorkMinutes += mins;
   }
 
   /** Save elapsed work from current phase, then skip to next */
@@ -162,16 +171,7 @@ export class PomoTimer {
   }
 
   getCompletedWorkMinutes(): number {
-    let total = 0;
-    for (let i = 0; i < this.currentPhaseIndex; i++) {
-      if (this.cyclePhases[i].type === "work") {
-        total += this.cyclePhases[i].duration;
-      }
-    }
-    if (this.phase?.type === "work" && this.isComplete()) {
-      total += this.duration;
-    }
-    return total;
+    return this.totalWorkMinutes;
   }
 
   getScheduleInfo() {

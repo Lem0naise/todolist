@@ -61,6 +61,7 @@ function MainApp() {
             timer.duration,
             timer.topic,
           );
+          timer.addWorkMinutes(timer.duration);
         }
         const hasMore = timer.advancePhase();
         if (!hasMore || timer.isCycleComplete()) {

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { getTimerInstance, startTimer, stopTimer, lastCompletedInfo } from "./timerState";
@@ -67,10 +67,11 @@ export function PomoView({
     saveSettings(s);
   };
 
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+    const id = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(id);
+  }, []);
 
   const timer = getTimerInstance();
 
@@ -784,8 +785,9 @@ function PhaseTimeline({
     const startPx = prevDurations * PX_PER_MIN;
     const widthPx = phase.duration * PX_PER_MIN;
     const idx = t.currentPhaseIndex + 1 + relativeIdx;
-    // compute end time for each block
-    const blockEndMs = new Date().getTime() + (prevDurations + phase.duration) * 60 * 1000;
+    // compute end time for each block, based on when the current phase ends
+    const baseMs = t.endTime?.getTime() ?? new Date().getTime();
+    const blockEndMs = baseMs + (prevDurations + phase.duration) * 60 * 1000;
     return { phase, idx, relativeIdx, startPx, widthPx, endTime: new Date(blockEndMs) };
   });
 
@@ -1118,7 +1120,7 @@ function SummaryView({
   const totals = getTotalsByDate(sessions);
   const topicMap = useRef(new Map<string, string>());
 
-  let colorIdx = 0;
+  let colorIdx = topicMap.current.size;
   const allTopics = new Set<string>();
   totals.forEach((d) => Object.keys(d.topics).forEach((t) => allTopics.add(t)));
   allTopics.forEach((t) => {

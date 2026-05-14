@@ -83,8 +83,12 @@ export function usePomoData() {
   return { sessions, addSession, removeSession, clearAll };
 }
 
+function getLocalDate(): string {
+  return new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local timezone
+}
+
 export function getTodayTotal(sessions: PomoSession[]): number {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDate();
   return Math.round(
     sessions
       .filter((s) => s.date === today)
@@ -109,25 +113,26 @@ export function getStatistics(sessions: PomoSession[]) {
   const now = new Date();
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekAgoStr = weekAgo.toISOString().split("T")[0];
+  const weekAgoStr = weekAgo.toLocaleDateString("en-CA");
   const thisWeek = Math.round(sessions
     .filter((s) => s.date >= weekAgoStr)
     .reduce((sum, s) => sum + s.minutes, 0));
 
   const monthAgo = new Date(now);
   monthAgo.setMonth(monthAgo.getMonth() - 1);
-  const monthAgoStr = monthAgo.toISOString().split("T")[0];
+  const monthAgoStr = monthAgo.toLocaleDateString("en-CA");
   const thisMonth = Math.round(sessions
     .filter((s) => s.date >= monthAgoStr)
     .reduce((sum, s) => sum + s.minutes, 0));
 
   const dates = [...new Set(sessions.map((s) => s.date))].sort().reverse();
   let currentStreak = 0;
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDate();
   for (let i = 0; i < dates.length; i++) {
-    const expectedDate = new Date(today);
+    const expectedDate = new Date(today + "T12:00:00");
     expectedDate.setDate(expectedDate.getDate() - i);
-    if (dates[i] === expectedDate.toISOString().split("T")[0]) {
+    const expectedStr = expectedDate.toLocaleDateString("en-CA");
+    if (dates[i] === expectedStr) {
       currentStreak++;
     } else {
       break;
