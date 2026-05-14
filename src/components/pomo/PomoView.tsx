@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { getTimerInstance, startTimer, stopTimer, lastCompletedInfo } from "./timerState";
@@ -97,8 +97,8 @@ export function PomoView({
           settings={settings}
           todos={todos}
           modules={modules}
-          onStart={(blocks, topic, taskName) => {
-            startTimer(blocks, topic, taskName);
+          onStart={(blocks) => {
+            startTimer(blocks);
             setView("timer");
           }}
           onCancel={() => setView("menu")}
@@ -108,6 +108,7 @@ export function PomoView({
         <TimerView
           pomoTick={pomoTick}
           addSession={addSession}
+          todos={todos}
           onComplete={() => setView("complete")}
           onEnd={() => setView("menu")}
           showToast={showToast}
@@ -300,7 +301,7 @@ function BeginView({
   settings: PomoSettings;
   todos: { _id: string; title: string; moduleName?: string; category?: string }[];
   modules: { _id: string; name: string }[];
-  onStart: (blocks: CycleBlock[], topic: string, taskName: string) => void;
+  onStart: (blocks: CycleBlock[]) => void;
   onCancel: () => void;
 }) {
   const [cycleBlocks, setCycleBlocks] = useState<CycleBlock[]>([
@@ -309,9 +310,7 @@ function BeginView({
     { type: "work", duration: settings.work, id: genBlockId() },
     { type: "long-break", duration: settings.longBreak, id: genBlockId() },
   ]);
-  const [selectedTask, setSelectedTask] = useState("custom");
-  const [customSubject, setCustomSubject] = useState("");
-  const [customTask, setCustomTask] = useState("");
+  const [expandedTask, setExpandedTask] = useState<number | null>(null);
 
   const addBlock = (type: CycleBlock["type"]) => {
     const dur = type === "work" ? settings.work : type === "short-break" ? settings.shortBreak : settings.longBreak;
@@ -320,10 +319,18 @@ function BeginView({
 
   const removeBlock = (id: number) => {
     setCycleBlocks((prev) => prev.filter((b) => b.id !== id));
+    if (expandedTask === id) setExpandedTask(null);
   };
 
   const updateBlockDuration = (id: number, dur: number) => {
     setCycleBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, duration: dur } : b)));
+  };
+
+  const updateBlockTask = (id: number, taskId: string, taskTopic: string, taskName: string) => {
+    setCycleBlocks((prev) => prev.map((b) =>
+      b.id === id ? { ...b, taskId: taskId || undefined, taskTopic: taskTopic || undefined, taskName: taskName || undefined } : b
+    ));
+    if (!taskId && !taskTopic && !taskName) setExpandedTask(null);
   };
 
   const moveBlock = (id: number, dir: -1 | 1) => {
@@ -339,121 +346,42 @@ function BeginView({
   };
 
   const handleStart = () => {
-    let topic = "";
-    let taskName = "";
-    if (selectedTask === "custom") {
-      if (!customSubject.trim()) return;
-      topic = customSubject.trim();
-      taskName = customTask.trim();
-    } else {
-      const t = todos.find((td) => td._id === selectedTask);
-      if (t) {
-        topic = t.moduleName || t.title;
-        taskName = t.title;
-      }
-    }
-    if (cycleBlocks.length === 0) return;
-    onStart(cycleBlocks, topic, taskName);
+    if (cycleBlocks.filter(b => b.type === "work").length === 0) return;
+    onStart(cycleBlocks);
   };
 
   const getBlockLabel = (b: CycleBlock) =>
-    b.type === "work" ? "Work" : b.type === "short-break" ? "Short Break" : "Long Break";
+    b.type === "work" ? "Work" : b.type === "short-break" ? "Break" : "Long Break";
 
   const blockClass = (b: CycleBlock) =>
     b.type === "work" ? "border-rose-200 bg-rose-50/40" : "border-mint-200 bg-mint-50/40";
 
-  const activeTodos = todos;
-
-  // Unique subjects from modules + todos
+  // Subject options for task selectors
   const subjectOptions = [...new Set([
     ...modules.map(m => m.name),
     ...todos.map(t => t.moduleName).filter(Boolean) as string[],
   ])].sort();
 
+  // Compute schedule preview timestamps
+  const { scheduleTimes, totalMinutes } = useMemo(() => {
+    const times: { block: CycleBlock; start: Date; end: Date }[] = [];
+    let t = new Date().getTime();
+    for (const b of cycleBlocks) {
+      const start = t;
+      t += b.duration * 60 * 1000;
+      times.push({ block: b, start: new Date(start), end: new Date(t) });
+    }
+    return { scheduleTimes: times, totalMinutes: cycleBlocks.reduce((s, b) => s + b.duration, 0) };
+  }, [cycleBlocks]);
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Build Cycle</h3>
 
-      {/* Task selector */}
-      <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3">
-        <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Task</p>
-        {activeTodos.length > 0 ? (
-          <div className="space-y-1.5">
-            {activeTodos.slice(0, 8).map((t) => (
-              <label
-                key={t._id}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                  selectedTask === t._id
-                    ? "border-rose-300 bg-rose-50"
-                    : "border-cream-200 hover:border-rose-200"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="pomo-task"
-                  value={t._id}
-                  checked={selectedTask === t._id}
-                  onChange={() => setSelectedTask(t._id)}
-                  className="accent-rose-400"
-                />
-                <span className="text-sm text-stone-700 font-medium truncate">
-                  {t.moduleName && (
-                    <span className="text-rose-400 font-bold">{t.moduleName}</span>
-                  )}
-                  {t.moduleName && " — "}
-                  {t.title}
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-stone-400 italic">No active tasks. Use custom below.</p>
-        )}
-
-        <label
-          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-            selectedTask === "custom" ? "border-rose-300 bg-rose-50" : "border-cream-200 hover:border-rose-200"
-          }`}
-        >
-          <input
-            type="radio"
-            name="pomo-task"
-            value="custom"
-            checked={selectedTask === "custom"}
-            onChange={() => setSelectedTask("custom")}
-            className="accent-rose-400"
-          />
-          <span className="text-sm font-bold text-stone-500">Custom</span>
-        </label>
-
-        {selectedTask === "custom" && (
-          <div className="flex gap-2 pl-7">
-            <select
-              value={customSubject}
-              onChange={(e) => { setCustomSubject(e.target.value); setSelectedTask("custom"); }}
-              className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white text-stone-600"
-            >
-              <option value="">Subject...</option>
-              {subjectOptions.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={customTask}
-              onChange={(e) => { setCustomTask(e.target.value); setSelectedTask("custom"); }}
-              placeholder="Task name"
-              className="flex-1 px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
-              onKeyDown={(e) => { if (e.key === "Enter") handleStart(); }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Cycle builder */}
-      <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Cycle</p>
+      {/* Block rows */}
+      <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-1.5">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Blocks</p>
           <button
             onClick={() =>
               setCycleBlocks([
@@ -470,61 +398,136 @@ function BeginView({
         </div>
 
         {cycleBlocks.length === 0 ? (
-          <p className="text-sm text-stone-400 text-center py-6">Add blocks to build your cycle</p>
+          <p className="text-sm text-stone-400 text-center py-6">Add blocks to plan your day</p>
         ) : (
-          <div className="space-y-2">
-            {cycleBlocks.map((b, i) => (
-              <div
-                key={b.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${blockClass(b)}`}
-              >
-                <span className={`text-sm font-bold min-w-[90px] ${b.type === "work" ? "text-rose-500" : "text-mint-500"}`}>
-                  {getBlockLabel(b)}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={b.duration}
-                    onChange={(e) => updateBlockDuration(b.id, parseFloat(e.target.value) || 1)}
-                    className="w-14 px-2 py-1 text-sm text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
-                  />
-                  <span className="text-xs text-stone-400">min</span>
+          <div className="space-y-1">
+            {cycleBlocks.map((b, i) => {
+              const isWork = b.type === "work";
+              const selectedTask = isWork && b.taskId ? todos.find(t => t._id === b.taskId) : null;
+              const hasCustomTask = isWork && !b.taskId && (b.taskTopic || b.taskName);
+              const showTaskPicker = expandedTask === b.id;
+
+              return (
+                <div key={b.id}>
+                  <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border ${blockClass(b)}`}>
+                    <button
+                      onClick={() => moveBlock(b.id, -1)}
+                      disabled={i === 0}
+                      className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none"
+                    >
+                      &#8593;
+                    </button>
+                    <button
+                      onClick={() => moveBlock(b.id, 1)}
+                      disabled={i === cycleBlocks.length - 1}
+                      className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none"
+                    >
+                      &#8595;
+                    </button>
+
+                    <span className={`text-xs font-bold min-w-[60px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>
+                      {getBlockLabel(b)}
+                    </span>
+
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={b.duration}
+                      onChange={(e) => updateBlockDuration(b.id, parseFloat(e.target.value) || 1)}
+                      className="w-12 px-1.5 py-1 text-xs text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+                    />
+                    <span className="text-[10px] text-stone-400">m</span>
+
+                    {/* Task selector for work blocks */}
+                    {isWork && (
+                      <button
+                        onClick={() => setExpandedTask(showTaskPicker ? null : b.id)}
+                        className={`flex-1 text-left px-2 py-1 rounded text-xs border truncate transition-colors ${
+                          selectedTask || hasCustomTask
+                            ? "border-rose-200 bg-rose-50/60 text-rose-600 font-medium"
+                            : "border-dashed border-cream-200 text-stone-300 italic hover:border-cream-300"
+                        }`}
+                      >
+                        {selectedTask
+                          ? `${selectedTask.moduleName || ""} ${selectedTask.moduleName ? "—" : ""} ${selectedTask.title}`
+                          : hasCustomTask
+                            ? `${b.taskTopic || ""} ${b.taskName ? "— " + b.taskName : ""}`
+                            : "Tap to assign task..."}
+                      </button>
+                    )}
+
+                    {!isWork && <div className="flex-1" />}
+
+                    <button
+                      onClick={() => removeBlock(b.id)}
+                      className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {/* Inline task picker */}
+                  {showTaskPicker && isWork && (
+                    <div className="ml-12 mr-4 mt-1 mb-1 p-2 bg-cream-50 rounded-lg border border-cream-100 space-y-1.5">
+                      <div className="flex gap-1.5 flex-wrap">
+                        {todos.slice(0, 6).map((t) => (
+                          <button
+                            key={t._id}
+                            onClick={() => {
+                              updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title);
+                              setExpandedTask(null);
+                            }}
+                            className={`text-[10px] px-2 py-1 rounded font-medium truncate max-w-[200px] border transition-colors ${
+                              b.taskId === t._id
+                                ? "border-rose-300 bg-rose-100 text-rose-600"
+                                : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"
+                            }`}
+                          >
+                            {t.moduleName && <span className="font-bold">{t.moduleName} — </span>}
+                            {t.title}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={b.taskTopic || ""}
+                          onChange={(e) => updateBlockTask(b.id, b.taskId || "", e.target.value, b.taskName || "")}
+                          className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+                        >
+                          <option value="">Subject...</option>
+                          {subjectOptions.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={b.taskName || ""}
+                          onChange={(e) => updateBlockTask(b.id, b.taskId || "", b.taskTopic || "", e.target.value)}
+                          placeholder="Task name"
+                          className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setExpandedTask(null)}
+                        className="text-[10px] font-bold text-stone-400 hover:text-stone-600"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="ml-auto flex gap-1">
-                  <button
-                    onClick={() => moveBlock(b.id, -1)}
-                    disabled={i === 0}
-                    className="px-2 py-1 text-xs text-stone-400 hover:text-stone-600 disabled:opacity-30 rounded hover:bg-cream-100"
-                  >
-                    &#8593;
-                  </button>
-                  <button
-                    onClick={() => moveBlock(b.id, 1)}
-                    disabled={i === cycleBlocks.length - 1}
-                    className="px-2 py-1 text-xs text-stone-400 hover:text-stone-600 disabled:opacity-30 rounded hover:bg-cream-100"
-                  >
-                    &#8595;
-                  </button>
-                  <button
-                    onClick={() => removeBlock(b.id)}
-                    className="px-2 py-1 text-xs text-rose-400 hover:text-rose-500 hover:bg-rose-50 rounded font-bold"
-                  >
-                    X
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap pt-2">
           <button onClick={() => addBlock("work")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50 transition-colors">
             + Work
           </button>
           <button onClick={() => addBlock("short-break")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
-            + Short Break
+            + Break
           </button>
           <button onClick={() => addBlock("long-break")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
             + Long Break
@@ -532,7 +535,45 @@ function BeginView({
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Schedule preview */}
+      {cycleBlocks.length > 0 && (
+        <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-2">
+          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">
+            Schedule ({totalMinutes}m total)
+          </p>
+          <div className="space-y-1">
+            {scheduleTimes.map(({ block, start, end }, i) => {
+              const isWork = block.type === "work";
+              const color = isWork ? "bg-rose-400" : "bg-mint-400";
+              const textColor = isWork ? "text-rose-500" : "text-mint-500";
+              const hasTask = block.taskTopic || block.taskName || block.taskId;
+              return (
+                <div key={i} className="flex items-center gap-2.5 text-xs">
+                  <span className="w-10 text-right font-bold text-stone-400 flex-shrink-0">
+                    {formatTime(start)}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+                  <span className={`font-bold min-w-[60px] ${textColor}`}>
+                    {getBlockLabel(block)}
+                  </span>
+                  <span className="text-stone-400">{block.duration}m</span>
+                  <span className="flex-1 text-stone-500 truncate">
+                    {hasTask
+                      ? block.taskName || block.taskTopic || "Task"
+                      : isWork
+                        ? <span className="text-stone-300 italic">no task</span>
+                        : null}
+                  </span>
+                  <span className="w-10 text-right text-stone-400 flex-shrink-0">
+                    {formatTime(end)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-3">
         <button onClick={onCancel} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
           Cancel
@@ -549,12 +590,14 @@ function BeginView({
 function TimerView({
   pomoTick,
   addSession,
+  todos,
   onComplete,
   onEnd,
   showToast,
 }: {
   pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
+  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
   onComplete: () => void;
   onEnd: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
@@ -704,59 +747,208 @@ function TimerView({
       </div>
 
       {/* Future phases timeline */}
-      <PhaseTimeline timer={timer} />
+      <PhaseTimeline timer={timer} todos={todos} />
     </div>
   );
 }
 
-function PhaseTimeline({ timer }: { timer: ReturnType<typeof getTimerInstance> }) {
+function PhaseTimeline({
+  timer,
+  todos,
+}: {
+  timer: ReturnType<typeof getTimerInstance>;
+  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+}) {
+  const [, forceRender] = useState(0);
+  const dragRef = useRef<{
+    type: "resize-right" | "resize-left" | "reorder";
+    phaseIdx: number;
+    startX: number;
+    startDuration: number;
+    startOrderIdx: number;
+  } | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const dragOverIdxRef = useRef<number | null>(null);
+
   if (!timer || !timer.cyclePhases.length) return null;
+  const t = timer;
+  const future = t.cyclePhases.slice(t.currentPhaseIndex + 1);
+  if (future.length === 0) return null;
 
-  const base = timer.isPaused && timer.pausedTime
-    ? new Date(timer.pausedTime)
-    : !timer.isPaused && timer.endTime
-      ? new Date(timer.endTime)
-      : new Date();
+  const totalDuration = future.reduce((s, p) => s + p.duration, 0);
+  const PX_PER_MIN = 8;
+  const totalPx = totalDuration * PX_PER_MIN;
 
-  const remaining = timer.cyclePhases.slice(timer.currentPhaseIndex);
+  const phases = future.map((phase, relativeIdx) => {
+    const prevDurations = future.slice(0, relativeIdx).reduce((s, p) => s + p.duration, 0);
+    const startPx = prevDurations * PX_PER_MIN;
+    const widthPx = phase.duration * PX_PER_MIN;
+    const idx = t.currentPhaseIndex + 1 + relativeIdx;
+    // compute end time for each block
+    const blockEndMs = new Date().getTime() + (prevDurations + phase.duration) * 60 * 1000;
+    return { phase, idx, relativeIdx, startPx, widthPx, endTime: new Date(blockEndMs) };
+  });
 
-  // Pre-compute start times for each remaining phase
-  const phases: { phase: typeof remaining[0]; start: Date; isCurrent: boolean }[] = [];
-  let cursor = new Date(base);
-  for (let i = 0; i < remaining.length; i++) {
-    phases.push({ phase: remaining[i], start: new Date(cursor), isCurrent: i === 0 });
-    cursor = new Date(cursor.getTime() + remaining[i].duration * 60 * 1000);
+  // --- drag handlers ---
+  function handleMouseMove(e: MouseEvent) {
+    const drag = dragRef.current;
+    if (!drag) return;
+
+    if (drag.type === "resize-right" || drag.type === "resize-left") {
+      const deltaPx = e.clientX - drag.startX;
+      const deltaMin = Math.round(deltaPx / PX_PER_MIN);
+      const sign = drag.type === "resize-left" ? -1 : 1;
+      const newDuration = Math.max(1, drag.startDuration + deltaMin * sign);
+      t.updatePhaseDuration(drag.phaseIdx, newDuration);
+      forceRender((n) => n + 1);
+    } else if (drag.type === "reorder") {
+      const deltaPx = e.clientX - drag.startX;
+      const movedSlots = Math.round(deltaPx / 80);
+      const newIdx = Math.max(0, Math.min(future.length - 1, drag.startOrderIdx + movedSlots));
+      if (newIdx !== drag.startOrderIdx) {
+        dragOverIdxRef.current = newIdx;
+        setDragOverIdx(newIdx);
+      } else {
+        dragOverIdxRef.current = null;
+        setDragOverIdx(null);
+      }
+    }
   }
 
+  function handleMouseUp() {
+    const drag = dragRef.current;
+    const overIdx = dragOverIdxRef.current;
+    if (drag?.type === "reorder" && overIdx !== null && overIdx !== drag.startOrderIdx) {
+      const fromIdx = t.currentPhaseIndex + 1 + drag.startOrderIdx;
+      const toIdx = t.currentPhaseIndex + 1 + overIdx;
+      t.swapFuturePhases(fromIdx, toIdx);
+      forceRender((n) => n + 1);
+    }
+    dragRef.current = null;
+    dragOverIdxRef.current = null;
+    setDragOverIdx(null);
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("mouseup", handleMouseUp);
+  }
+
+  const handleMouseDown = (
+    e: React.MouseEvent,
+    type: "resize-right" | "resize-left" | "reorder",
+    phaseIdx: number,
+    relativeIdx: number,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const phase = future[relativeIdx];
+    dragRef.current = {
+      type,
+      phaseIdx,
+      startX: e.clientX,
+      startDuration: phase.duration,
+      startOrderIdx: relativeIdx,
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   return (
-    <div className="pt-2">
+    <div className="pt-3">
       <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2 text-center">
         Upcoming
       </p>
-      <div className="flex items-start gap-0 justify-center flex-wrap">
-        {phases.map(({ phase, start, isCurrent }, i) => {
+
+      {/* Bars */}
+      <div
+        className="relative h-14 mx-auto bg-cream-100 rounded-xl overflow-hidden border border-cream-200"
+        style={{ width: Math.max(totalPx, 200) }}
+      >
+        {phases.map(({ phase, idx, relativeIdx, startPx, widthPx }) => {
           const isWork = phase.type === "work";
-          const text = isWork ? "text-rose-500" : "text-mint-500";
+          const bg = isWork
+            ? "bg-rose-300/50 hover:bg-rose-300/60"
+            : "bg-mint-300/50 hover:bg-mint-300/60";
+          const isDragging = dragOverIdx === relativeIdx;
 
           return (
-            <div key={i} className="flex items-center">
-              <div className={`flex flex-col items-center px-2 py-1.5 rounded-lg ${isCurrent ? "bg-cream-100" : ""}`}>
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${text}`}>
-                  {phase.label}
+            <div
+              key={idx}
+              className={`absolute top-1.5 h-11 rounded-lg border text-center flex flex-col items-center justify-center cursor-grab active:cursor-grabbing transition-[width,left] select-none ${
+                isDragging ? "ring-2 ring-lavender-400 z-10" : ""
+              } ${bg} ${isWork ? "border-rose-200" : "border-mint-200"}`}
+              style={{ left: startPx + 2, width: Math.max(widthPx - 4, 20) }}
+              onMouseDown={(e) => handleMouseDown(e, "reorder", idx, relativeIdx)}
+            >
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-l-lg"
+                onMouseDown={(e) => handleMouseDown(e, "resize-left", idx, relativeIdx)}
+              />
+              <span className="text-[9px] font-bold leading-tight truncate max-w-full px-1">
+                {isWork ? `W${relativeIdx + 1}` : phase.label}
+              </span>
+              {phase.taskName && isWork && (
+                <span className="text-[8px] text-rose-500 truncate max-w-full px-1 leading-tight">
+                  {phase.taskName}
                 </span>
-                <span className="text-[11px] font-bold text-stone-500">
-                  {phase.duration}m
-                </span>
-                <span className="text-[9px] text-stone-400 mt-0.5">
-                  {formatTime(start)}
-                </span>
-              </div>
-              {i < phases.length - 1 && (
-                <div className="w-4 h-0.5 bg-cream-200 mt-3 flex-shrink-0" />
               )}
+              {!phase.taskName && isWork && (
+                <span className="text-[8px] text-stone-300 italic truncate max-w-full px-1 leading-tight">
+                  no task
+                </span>
+              )}
+              <span className="text-[8px] text-stone-400">{phase.duration}m</span>
+              <div
+                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-r-lg"
+                onMouseDown={(e) => handleMouseDown(e, "resize-right", idx, relativeIdx)}
+              />
             </div>
           );
         })}
+      </div>
+
+      {/* Time marker under each block */}
+      <div
+        className="flex mx-auto mt-1"
+        style={{ width: Math.max(totalPx, 200) }}
+      >
+        {phases.map((p, i) => (
+          <div
+            key={i}
+            className="text-center text-[8px] text-stone-400"
+            style={{ width: p.widthPx, flexShrink: 0 }}
+          >
+            <span>{formatTime(p.endTime)}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Task assignment for work blocks */}
+      <div className="flex gap-2 flex-wrap justify-center mt-2">
+        {phases.filter(p => p.phase.type === "work").map(({ phase, idx, relativeIdx }) => (
+          <div key={idx} className="flex items-center gap-1">
+            <span className="text-[9px] font-bold text-rose-400">W{relativeIdx + 1}</span>
+            <select
+              value={phase.taskTopic || ""}
+              onChange={(e) => {
+                const tid = e.target.value;
+                if (tid) {
+                  const td = todos.find(t => t._id === tid);
+                  t.updatePhaseTask(idx, td?.moduleName || td?.title || "", td?.title || "");
+                } else {
+                  t.updatePhaseTask(idx, "", "");
+                }
+                forceRender((n) => n + 1);
+              }}
+              className="text-[9px] px-1.5 py-0.5 border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300 max-w-[140px] text-stone-600 truncate"
+            >
+              <option value="">— task —</option>
+              {todos.slice(0, 15).map(td => (
+                <option key={td._id} value={td._id}>
+                  {td.moduleName ? `${td.moduleName} — ` : ""}{td.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
       </div>
     </div>
   );

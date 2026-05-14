@@ -4,6 +4,8 @@ export interface TimerPhase {
   type: "work" | "break";
   duration: number;
   label: string;
+  taskTopic?: string;
+  taskName?: string;
 }
 
 export class PomoTimer {
@@ -20,10 +22,8 @@ export class PomoTimer {
   cyclePhases: TimerPhase[] = [];
   currentPhaseIndex = 0;
 
-  initCycleWithBlocks(blocks: CycleBlock[], topic: string, taskName = "") {
+  initCycleWithBlocks(blocks: CycleBlock[]) {
     this.reset();
-    this.topic = topic;
-    this.taskName = taskName;
     let workCount = 0;
     this.cyclePhases = blocks.map((block) => {
       if (block.type === "work") {
@@ -32,6 +32,8 @@ export class PomoTimer {
           type: "work" as const,
           duration: block.duration,
           label: `Work ${workCount}`,
+          taskTopic: block.taskTopic,
+          taskName: block.taskName,
         };
       }
       return {
@@ -77,6 +79,8 @@ export class PomoTimer {
     const phase = this.cyclePhases[this.currentPhaseIndex];
     this.phase = phase;
     this.duration = phase.duration;
+    this.topic = phase.taskTopic || "";
+    this.taskName = phase.taskName || "";
     this.startTime = new Date();
     this.endTime = new Date(
       this.startTime.getTime() + this.duration * 60 * 1000,
@@ -185,5 +189,41 @@ export class PomoTimer {
       cycleEndTime: cycleEnd,
       nextPhaseLabel,
     };
+  }
+
+  /** Update task info on a future phase by index */
+  updatePhaseTask(idx: number, taskTopic: string, taskName: string): boolean {
+    if (idx <= this.currentPhaseIndex || idx >= this.cyclePhases.length) return false;
+    const phase = this.cyclePhases[idx];
+    if (phase.type !== "work") return false;
+    phase.taskTopic = taskTopic;
+    phase.taskName = taskName;
+    return true;
+  }
+
+  /** Swap two future phases by index */
+  swapFuturePhases(a: number, b: number): boolean {
+    const min = this.currentPhaseIndex + 1;
+    if (a < min || b < min || a >= this.cyclePhases.length || b >= this.cyclePhases.length) return false;
+    const temp = this.cyclePhases[a];
+    this.cyclePhases[a] = this.cyclePhases[b];
+    this.cyclePhases[b] = temp;
+    return true;
+  }
+
+  /** Update duration of a future phase (clamped to 1 min minimum) */
+  updatePhaseDuration(idx: number, newDuration: number): boolean {
+    const min = this.currentPhaseIndex + 1;
+    if (idx < min || idx >= this.cyclePhases.length) return false;
+    this.cyclePhases[idx].duration = Math.max(1, Math.round(newDuration));
+    return true;
+  }
+
+  /** Skip a future break (advance through it immediately) */
+  skipFutureBreak(idx: number): boolean {
+    if (idx !== this.currentPhaseIndex || idx >= this.cyclePhases.length) return false;
+    if (this.cyclePhases[idx].type !== "break") return false;
+    this.currentPhaseIndex++;
+    return this.startNextPhase();
   }
 }

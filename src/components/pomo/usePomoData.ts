@@ -27,6 +27,9 @@ export interface CycleBlock {
   type: "work" | "short-break" | "long-break";
   duration: number;
   id: number;
+  taskId?: string;
+  taskTopic?: string;
+  taskName?: string;
 }
 
 const DEFAULT_SETTINGS: PomoSettings = {

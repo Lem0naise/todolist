@@ -9,9 +9,9 @@ export function getTimerInstance(): PomoTimer | null {
   return instance;
 }
 
-export function startTimer(blocks: CycleBlock[], topic: string, taskName: string): PomoTimer {
+export function startTimer(blocks: CycleBlock[]): PomoTimer {
   instance = new PomoTimer();
-  instance.initCycleWithBlocks(blocks, topic, taskName);
+  instance.initCycleWithBlocks(blocks);
   return instance;
 }
 
