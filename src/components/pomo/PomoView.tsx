@@ -468,35 +468,53 @@ function BeginView({
                     </button>
                   </div>
 
-                  {/* Inline task picker */}
+                  {/* Inline task picker — grouped by module */}
                   {showTaskPicker && isWork && (
-                    <div className="ml-12 mr-4 mt-1 mb-1 p-2 bg-cream-50 rounded-lg border border-cream-100 space-y-1.5">
-                      <div className="flex gap-1.5 flex-wrap">
-                        {todos.slice(0, 6).map((t) => (
-                          <button
-                            key={t._id}
-                            onClick={() => {
-                              updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title);
-                              setExpandedTask(null);
-                            }}
-                            className={`text-[10px] px-2 py-1 rounded font-medium truncate max-w-[200px] border transition-colors ${
-                              b.taskId === t._id
-                                ? "border-rose-300 bg-rose-100 text-rose-600"
-                                : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"
-                            }`}
-                          >
-                            {t.moduleName && <span className="font-bold">{t.moduleName} — </span>}
-                            {t.title}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex gap-1.5">
+                    <div className="ml-12 mr-4 mt-1 mb-1 p-3 bg-cream-50 rounded-lg border border-cream-100 space-y-2 max-h-48 overflow-y-auto">
+                      {(() => {
+                        const groups: Record<string, typeof todos> = {};
+                        for (const t of todos) {
+                          const key = t.moduleName || "General";
+                          if (!groups[key]) groups[key] = [];
+                          groups[key].push(t);
+                        }
+                        return Object.entries(groups).sort(([a], [b]) => {
+                          if (a === "General") return 1;
+                          if (b === "General") return -1;
+                          return a.localeCompare(b);
+                        }).map(([modName, items]) => (
+                          <div key={modName}>
+                            <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1">
+                              {modName}
+                            </p>
+                            <div className="flex gap-1 flex-wrap">
+                              {items.map((t) => (
+                                <button
+                                  key={t._id}
+                                  onClick={() => {
+                                    updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title);
+                                    setExpandedTask(null);
+                                  }}
+                                  className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${
+                                    b.taskId === t._id
+                                      ? "border-rose-300 bg-rose-100 text-rose-600"
+                                      : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"
+                                  }`}
+                                >
+                                  {t.title}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                      <div className="flex gap-1.5 pt-1 border-t border-cream-200">
                         <select
                           value={b.taskTopic || ""}
                           onChange={(e) => updateBlockTask(b.id, b.taskId || "", e.target.value, b.taskName || "")}
                           className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
                         >
-                          <option value="">Subject...</option>
+                          <option value="">Custom subject...</option>
                           {subjectOptions.map(s => (
                             <option key={s} value={s}>{s}</option>
                           ))}
@@ -505,16 +523,16 @@ function BeginView({
                           type="text"
                           value={b.taskName || ""}
                           onChange={(e) => updateBlockTask(b.id, b.taskId || "", b.taskTopic || "", e.target.value)}
-                          placeholder="Task name"
+                          placeholder="Custom name"
                           className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
                         />
+                        <button
+                          onClick={() => setExpandedTask(null)}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-500 flex-shrink-0"
+                        >
+                          Done
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setExpandedTask(null)}
-                        className="text-[10px] font-bold text-stone-400 hover:text-stone-600"
-                      >
-                        Done
-                      </button>
                     </div>
                   )}
                 </div>
@@ -940,14 +958,30 @@ function PhaseTimeline({
                 }
                 forceRender((n) => n + 1);
               }}
-              className="text-[9px] px-1.5 py-0.5 border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300 max-w-[140px] text-stone-600 truncate"
+              className="text-[9px] px-1.5 py-0.5 border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300 max-w-[150px] text-stone-600 truncate"
             >
               <option value="">— task —</option>
-              {todos.slice(0, 15).map(td => (
-                <option key={td._id} value={td._id}>
-                  {td.moduleName ? `${td.moduleName} — ` : ""}{td.title}
-                </option>
-              ))}
+              {(() => {
+                const groups: Record<string, typeof todos> = {};
+                for (const td of todos) {
+                  const key = td.moduleName || "General";
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(td);
+                }
+                return Object.entries(groups).sort(([a], [b]) => {
+                  if (a === "General") return 1;
+                  if (b === "General") return -1;
+                  return a.localeCompare(b);
+                }).map(([modName, items]) => (
+                  <optgroup key={modName} label={modName}>
+                    {items.map(td => (
+                      <option key={td._id} value={td._id}>
+                        {td.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                ));
+              })()}
             </select>
           </div>
         ))}
