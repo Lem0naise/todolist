@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getTimerInstance, startTimer, startStopwatch, stopTimer, lastCompletedInfo } from "./timerState";
+import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -720,6 +720,7 @@ function TimerView({
       stopTimer();
       onComplete();
     } else {
+      persist();
       showToast(`Skipped to ${timer.phase?.label}`, "success");
     }
   };
@@ -730,6 +731,7 @@ function TimerView({
     } else {
       timer.pause();
     }
+    persist();
   };
 
   const secondsLeft = timer.getTimeLeft();
@@ -1232,6 +1234,7 @@ function StopwatchView({
       addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], workMins, timer.topic || timer.taskName || "Work");
     }
     timer.startBreak();
+    persist();
     forceRender((n) => n + 1);
   };
 
@@ -1248,6 +1251,7 @@ function StopwatchView({
     } else {
       timer.initStopwatch("Work", "");
     }
+    persist();
     setSelectingTask(false);
     forceRender((n) => n + 1);
   };
@@ -1255,6 +1259,7 @@ function StopwatchView({
   const handleTogglePause = () => {
     if (timer.isPaused) timer.resume();
     else timer.pause();
+    persist();
     forceRender((n) => n + 1);
   };
 

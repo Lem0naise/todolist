@@ -11,7 +11,7 @@ import { TodosView } from "./components/todos/TodosView";
 import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
-import { getTimerInstance, stopTimer } from "./components/pomo/timerState";
+import { getTimerInstance, stopTimer, persist, restoreTimer } from "./components/pomo/timerState";
 import { usePomoData } from "./components/pomo/usePomoData";
 
 function MainApp() {
@@ -23,6 +23,11 @@ function MainApp() {
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
   const { addSession } = usePomoData();
+
+  // Restore persisted timer on mount
+  useEffect(() => {
+    restoreTimer();
+  }, []);
 
   const processMissed = useMutation(api.occurrences.processMissedEvents);
   useEffect(() => {
@@ -51,6 +56,8 @@ function MainApp() {
     tickRef.current = setInterval(() => {
       const timer = getTimerInstance();
       if (!timer || !timer.isRunning) return;
+
+      persist();
 
       if (timer.isComplete()) {
         if (timer.phase?.type === "work") {
@@ -97,7 +104,7 @@ function MainApp() {
 
   const timer = getTimerInstance();
   const showFloating =
-    activeTab !== "pomo" && timer?.isRunning && timer.phase;
+    activeTab !== "pomo" && timer?.isRunning;
 
   return (
     <div className="h-screen flex flex-col bg-cream">
