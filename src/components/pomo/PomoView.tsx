@@ -1348,10 +1348,6 @@ function StopwatchView({
         </span>
       </div>
 
-      <p className={`text-sm font-bold uppercase tracking-wider ${accentColor}`}>
-        {isWork ? `${Math.floor(elapsed / 60)}m elapsed` : "break"}
-      </p>
-
       <div className="flex gap-2 justify-center">
         <button
           onClick={handleTogglePause}
