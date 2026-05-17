@@ -15,11 +15,11 @@ export function FloatingPomo({
     return () => clearInterval(id);
   }, []);
 
-  const secondsLeft = timer.getTimeLeft();
-  const mins = Math.floor(secondsLeft / 60);
-  const secs = secondsLeft % 60;
-  const isBreak = timer.phase?.type === "break";
-  const bg = isBreak ? "bg-mint-400" : "bg-rose-400";
+  const isStopwatch = timer.mode === "stopwatch";
+  const elapsed = timer.getElapsedSeconds();
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const bg = isStopwatch ? "bg-amber-400" : timer.phase?.type === "break" ? "bg-mint-400" : "bg-rose-400";
   const pulse = timer.isPaused ? "" : "animate-pulse";
 
   return (
@@ -31,12 +31,10 @@ export function FloatingPomo({
       <span className="font-pomo">
         {timer.isPaused
           ? "paused"
-          : timer.duration >= 60
-            ? `${String(Math.floor(secondsLeft / 3600)).padStart(2, "0")}:${String(Math.floor((secondsLeft % 3600) / 60)).padStart(2, "0")}:${String(secondsLeft % 60).padStart(2, "0")}`
-            : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`}
+          : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`}
       </span>
       <span className="text-xs opacity-80">
-        {isBreak ? "break" : timer.topic.slice(0, 12)}
+        {isStopwatch ? (timer.topic || "work").slice(0, 12) : timer.phase?.type === "break" ? "break" : timer.topic.slice(0, 12)}
       </span>
     </button>
   );

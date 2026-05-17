@@ -9,6 +9,8 @@ export interface TimerPhase {
 }
 
 export class PomoTimer {
+  mode: "timer" | "stopwatch" = "timer";
+  subMode: "work" | "break" = "work";
   startTime: Date | null = null;
   endTime: Date | null = null;
   duration = 0;
@@ -22,9 +24,11 @@ export class PomoTimer {
   cyclePhases: TimerPhase[] = [];
   currentPhaseIndex = 0;
   totalWorkMinutes = 0;
+  lastElapsedMins = 0;
 
   initCycleWithBlocks(blocks: CycleBlock[]) {
     this.reset();
+    this.mode = "timer";
     let workCount = 0;
     this.cyclePhases = blocks.map((block) => {
       if (block.type === "work") {
@@ -58,6 +62,26 @@ export class PomoTimer {
       { type: "break", duration: longBreak, label: "Long Break" },
     ];
     this.startNextPhase();
+  }
+
+  initStopwatch(topic: string, taskName = "") {
+    this.reset();
+    this.mode = "stopwatch";
+    this.subMode = "work";
+    this.topic = topic;
+    this.taskName = taskName;
+    this.startTime = new Date();
+    this.isRunning = true;
+  }
+
+  startBreak(): number {
+    const mins = this.stop();
+    this.subMode = "break";
+    this.topic = "Break";
+    this.taskName = "";
+    this.startTime = new Date();
+    this.isRunning = true;
+    return mins;
   }
 
   private reset() {
@@ -119,9 +143,10 @@ export class PomoTimer {
     if (this.startTime) {
       const elapsed = (new Date().getTime() - this.startTime.getTime()) / 1000 / 60;
       const mins = Math.max(1, Math.round(elapsed));
-      if (this.phase?.type === "work") {
+      if (this.mode === "stopwatch" ? this.subMode === "work" : this.phase?.type === "work") {
         this.totalWorkMinutes += mins;
       }
+      this.lastElapsedMins = mins;
       return mins;
     }
     return 0;
@@ -158,16 +183,43 @@ export class PomoTimer {
   }
 
   isComplete(): boolean {
+    if (this.mode === "stopwatch") return false;
     return this.isRunning && !this.isPaused && this.getTimeLeft() === 0;
+  }
+
+  isCycleComplete(): boolean {
+    if (this.mode === "stopwatch") return false;
+    return this.currentPhaseIndex >= this.cyclePhases.length;
+  }
+
+  /** Seconds counting UP for stopwatch display */
+  getElapsedSeconds(): number {
+    if (!this.startTime) return 0;
+    const base = this.isPaused && this.pausedTime
+      ? this.pausedTime.getTime() - this.startTime.getTime()
+      : new Date().getTime() - this.startTime.getTime();
+    return Math.floor(base / 1000);
+  }
+
+  /** Multi-ring progress: each entry is { progress: 0-100 } for a 30-min block */
+  getRingProgresses(): { progress: number }[] {
+    const totalSecs = this.getElapsedSeconds();
+    const blockSecs = 25 * 60; // 25 * 60
+    const fullRings = Math.floor(totalSecs / blockSecs);
+    const partial = totalSecs % blockSecs;
+    const rings: { progress: number }[] = [];
+    for (let i = 0; i < fullRings; i++) {
+      rings.push({ progress: 100 });
+    }
+    if (partial > 0 || rings.length === 0) {
+      rings.push({ progress: Math.min(100, Math.round((partial / blockSecs) * 1000) / 10) });
+    }
+    return rings;
   }
 
   advancePhase(): boolean {
     this.currentPhaseIndex++;
     return this.startNextPhase();
-  }
-
-  isCycleComplete(): boolean {
-    return this.currentPhaseIndex >= this.cyclePhases.length;
   }
 
   getCompletedWorkMinutes(): number {

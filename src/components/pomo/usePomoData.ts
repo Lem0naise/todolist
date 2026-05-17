@@ -91,13 +91,14 @@ export function getTodayTotal(sessions: PomoSession[]): number {
   const today = getLocalDate();
   return Math.round(
     sessions
-      .filter((s) => s.date === today)
+      .filter((s) => s.date === today && s.topic !== "Break")
       .reduce((sum, s) => sum + s.minutes, 0),
   );
 }
 
 export function getStatistics(sessions: PomoSession[]) {
-  if (sessions.length === 0) {
+  const workSessions = sessions.filter((s) => s.topic !== "Break");
+  if (workSessions.length === 0) {
     return {
       total: 0,
       thisWeek: 0,
@@ -108,24 +109,24 @@ export function getStatistics(sessions: PomoSession[]) {
     };
   }
 
-  const total = Math.round(sessions.reduce((sum, s) => sum + s.minutes, 0));
+  const total = Math.round(workSessions.reduce((sum, s) => sum + s.minutes, 0));
 
   const now = new Date();
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoStr = weekAgo.toLocaleDateString("en-CA");
-  const thisWeek = Math.round(sessions
+  const thisWeek = Math.round(workSessions
     .filter((s) => s.date >= weekAgoStr)
     .reduce((sum, s) => sum + s.minutes, 0));
 
   const monthAgo = new Date(now);
   monthAgo.setMonth(monthAgo.getMonth() - 1);
   const monthAgoStr = monthAgo.toLocaleDateString("en-CA");
-  const thisMonth = Math.round(sessions
+  const thisMonth = Math.round(workSessions
     .filter((s) => s.date >= monthAgoStr)
     .reduce((sum, s) => sum + s.minutes, 0));
 
-  const dates = [...new Set(sessions.map((s) => s.date))].sort().reverse();
+  const dates = [...new Set(workSessions.map((s) => s.date))].sort().reverse();
   let currentStreak = 0;
   const today = getLocalDate();
   for (let i = 0; i < dates.length; i++) {
@@ -140,7 +141,7 @@ export function getStatistics(sessions: PomoSession[]) {
   }
 
   const dayTotals: Record<string, number> = {};
-  sessions.forEach((s) => {
+  workSessions.forEach((s) => {
     dayTotals[s.date] = (dayTotals[s.date] || 0) + s.minutes;
   });
   const bestDayEntry = Object.entries(dayTotals).sort((a, b) => b[1] - a[1])[0];
@@ -150,7 +151,8 @@ export function getStatistics(sessions: PomoSession[]) {
 
   const topicTotals: Record<string, number> = {};
   sessions.forEach((s) => {
-    const topic = s.topic || "Untitled";
+    if (s.topic === "Break") return;
+    const topic = s.topic || "Work";
     topicTotals[topic] = (topicTotals[topic] || 0) + s.minutes;
   });
   const topTopicEntry = Object.entries(topicTotals).sort((a, b) => b[1] - a[1])[0];
@@ -164,8 +166,9 @@ export function getStatistics(sessions: PomoSession[]) {
 export function getTotalsByDate(sessions: PomoSession[]) {
   const totals: Record<string, Record<string, number>> = {};
   for (const session of sessions) {
+    if (session.topic === "Break") continue;
     if (!totals[session.date]) totals[session.date] = {};
-    const topic = session.topic || "Untitled";
+    const topic = session.topic || "Work";
     totals[session.date][topic] = Math.round((totals[session.date][topic] || 0) + session.minutes);
   }
   const dates = Object.keys(totals).sort();

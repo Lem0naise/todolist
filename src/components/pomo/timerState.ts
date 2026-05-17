@@ -15,6 +15,12 @@ export function startTimer(blocks: CycleBlock[]): PomoTimer {
   return instance;
 }
 
+export function startStopwatch(topic: string, taskName: string): PomoTimer {
+  instance = new PomoTimer();
+  instance.initStopwatch(topic, taskName);
+  return instance;
+}
+
 export function stopTimer(): void {
   lastCompletedInfo = {
     mins: instance?.getCompletedWorkMinutes() ?? 0,

@@ -59,7 +59,7 @@ function MainApp() {
             d.toISOString().split("T")[0],
             d.toTimeString().split(" ")[0],
             timer.duration,
-            timer.topic,
+            timer.topic || timer.taskName || "Work",
           );
           timer.addWorkMinutes(timer.duration);
         }

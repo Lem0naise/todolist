@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getTimerInstance, startTimer, stopTimer, lastCompletedInfo } from "./timerState";
+import { getTimerInstance, startTimer, startStopwatch, stopTimer, lastCompletedInfo } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -53,6 +53,7 @@ export function PomoView({
     const timer = getTimerInstance();
     return timer?.isRunning ? "timer" : "menu";
   });
+  const [pomoMode, setPomoMode] = useState<"timer" | "stopwatch">("timer");
   const [settings, setSettings] = useState<PomoSettings>(loadSettings);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -86,14 +87,16 @@ export function PomoView({
           settings={settings}
           onUpdateSettings={updateSettings}
           sessions={sessions}
+          pomoMode={pomoMode}
+          onModeChange={setPomoMode}
           hasActiveTimer={!!timer?.isRunning}
           onResume={() => setView("timer")}
-          onBegin={() => setView("begin")}
+          onBegin={() => setView(pomoMode === "stopwatch" ? "begin" : "begin")}
           onLog={() => setView("log")}
           onSummary={() => setView("summary")}
         />
       )}
-      {view === "begin" && (
+      {view === "begin" && pomoMode === "timer" && (
         <BeginView
           settings={settings}
           todos={todos}
@@ -105,12 +108,31 @@ export function PomoView({
           onCancel={() => setView("menu")}
         />
       )}
-      {view === "timer" && (
+      {view === "begin" && pomoMode === "stopwatch" && (
+        <StopwatchBeginView
+          todos={todos}
+          onStart={(topic, taskName) => {
+            startStopwatch(topic, taskName);
+            setView("timer");
+          }}
+          onCancel={() => setView("menu")}
+        />
+      )}
+      {view === "timer" && pomoMode === "timer" && (
         <TimerView
           pomoTick={pomoTick}
           addSession={addSession}
           todos={todos}
           onComplete={() => setView("complete")}
+          onEnd={() => setView("menu")}
+          showToast={showToast}
+        />
+      )}
+      {view === "timer" && pomoMode === "stopwatch" && (
+        <StopwatchView
+          pomoTick={pomoTick}
+          addSession={addSession}
+          todos={todos}
           onEnd={() => setView("menu")}
           showToast={showToast}
         />
@@ -159,6 +181,8 @@ function MenuView({
   settings,
   onUpdateSettings,
   sessions,
+  pomoMode,
+  onModeChange,
   hasActiveTimer,
   onResume,
   onBegin,
@@ -168,6 +192,8 @@ function MenuView({
   settings: PomoSettings;
   onUpdateSettings: (s: PomoSettings) => void;
   sessions: PomoSession[];
+  pomoMode: "timer" | "stopwatch";
+  onModeChange: (m: "timer" | "stopwatch") => void;
   hasActiveTimer: boolean;
   onResume: () => void;
   onBegin: () => void;
@@ -241,6 +267,26 @@ function MenuView({
             </p>
           </>
         )}
+      </div>
+
+      {/* Mode toggle */}
+      <div className="flex bg-cream-100 rounded-xl p-1 mb-3">
+        <button
+          onClick={() => onModeChange("timer")}
+          className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${
+            pomoMode === "timer" ? "bg-white text-rose-500 shadow-sm" : "text-stone-400 hover:text-stone-600"
+          }`}
+        >
+          Pomo
+        </button>
+        <button
+          onClick={() => onModeChange("stopwatch")}
+          className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${
+            pomoMode === "stopwatch" ? "bg-white text-amber-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
+          }`}
+        >
+          Stopwatch
+        </button>
       </div>
 
       {/* Menu Grid */}
@@ -1025,6 +1071,300 @@ function CompleteView({
           className="px-6 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors"
         >
           Menu
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Stopwatch Begin View ── */
+function StopwatchBeginView({
+  todos,
+  onStart,
+  onCancel,
+}: {
+  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  onStart: (topic: string, taskName: string) => void;
+  onCancel: () => void;
+}) {
+  const [selectedTask, setSelectedTask] = useState("");
+
+  const groups: Record<string, typeof todos> = {};
+  for (const t of todos) {
+    const key = t.moduleName || "General";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  }
+  const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
+    if (a === "General") return 1;
+    if (b === "General") return -1;
+    return a.localeCompare(b);
+  });
+
+  const handleStart = () => {
+    if (!selectedTask) return;
+    const td = todos.find((t) => t._id === selectedTask);
+    if (td) {
+      onStart(td.moduleName || td.title, td.title);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Start Stopwatch</h3>
+
+      <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3">
+        <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">
+          Select Task
+        </p>
+        {sortedGroups.map(([modName, items]) => (
+          <div key={modName}>
+            <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1.5">
+              {modName}
+            </p>
+            <div className="flex gap-1.5 flex-wrap">
+              {items.map((t) => (
+                <button
+                  key={t._id}
+                  onClick={() => setSelectedTask(t._id)}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
+                    selectedTask === t._id
+                      ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
+                  }`}
+                >
+                  {t.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {todos.length === 0 && (
+          <p className="text-xs text-stone-400 italic">No tasks yet. Add some in the Tasks tab.</p>
+        )}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={onCancel} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
+          Cancel
+        </button>
+        <button onClick={handleStart} disabled={!selectedTask} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
+          Start
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Stopwatch View ── */
+const RING_R = 100;
+const RING_GAP = 12;
+const RING_STROKE = 8;
+
+function StopwatchView({
+  addSession,
+  todos,
+  onEnd,
+}: {
+  pomoTick: number;
+  addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
+  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  onEnd: () => void;
+  showToast: (msg: string, type: "success" | "error") => void;
+}) {
+  const timer = getTimerInstance();
+  const [, forceRender] = useState(0);
+  const [selectingTask, setSelectingTask] = useState(false);
+  const [nextTaskId, setNextTaskId] = useState("");
+
+  useEffect(() => {
+    const id = setInterval(() => forceRender((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!timer || timer.mode !== "stopwatch") {
+    return (
+      <div className="text-center py-16">
+        <p className="text-stone-400">No active stopwatch</p>
+        <button onClick={onEnd} className="mt-4 text-sm text-amber-400 font-bold hover:underline">Back</button>
+      </div>
+    );
+  }
+
+  const elapsed = timer.getElapsedSeconds();
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const rings = timer.getRingProgresses();
+  const maxRings = 4;
+  const isWork = timer.subMode === "work";
+
+  const groups: Record<string, typeof todos> = {};
+  for (const t of todos) {
+    const key = t.moduleName || "General";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  }
+  const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
+    if (a === "General") return 1;
+    if (b === "General") return -1;
+    return a.localeCompare(b);
+  });
+
+  const handleEnd = () => {
+    const elapsedMins = timer.stop();
+    if (elapsedMins > 0 && timer.subMode === "work") {
+      const d = new Date();
+      addSession(
+        d.toISOString().split("T")[0],
+        d.toTimeString().split(" ")[0],
+        elapsedMins,
+        timer.topic || timer.taskName || "Work",
+      );
+    }
+    stopTimer();
+    onEnd();
+  };
+
+  const handleTakeBreak = () => {
+    const workMins = timer.stop();
+    if (workMins > 0) {
+      const d = new Date();
+      addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], workMins, timer.topic || timer.taskName || "Work");
+    }
+    timer.startBreak();
+    forceRender((n) => n + 1);
+  };
+
+  const handleResumeWork = () => {
+    timer.stop(); // discard break time
+    setSelectingTask(true);
+  };
+
+  const handleConfirmTask = () => {
+    if (!nextTaskId) return;
+    const td = todos.find((t) => t._id === nextTaskId);
+    if (td) {
+      timer.initStopwatch(td.moduleName || td.title, td.title);
+    } else {
+      timer.initStopwatch("Work", "");
+    }
+    setSelectingTask(false);
+    forceRender((n) => n + 1);
+  };
+
+  const handleTogglePause = () => {
+    if (timer.isPaused) timer.resume();
+    else timer.pause();
+    forceRender((n) => n + 1);
+  };
+
+  const ringColor = isWork ? "#f4a7b9" : "#98d9c2";
+  const accentColor = isWork ? "text-amber-600" : "text-mint-500";
+  const bgColor = isWork ? "bg-amber-400 hover:bg-amber-500" : "bg-mint-600 hover:bg-mint-500";
+
+  // Task selector (shown after break ends)
+  if (selectingTask) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Next Task</h3>
+        <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3 max-h-64 overflow-y-auto">
+          {sortedGroups.map(([modName, items]) => (
+            <div key={modName}>
+              <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1.5">{modName}</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {items.map((t) => (
+                  <button
+                    key={t._id}
+                    onClick={() => setNextTaskId(t._id)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
+                      nextTaskId === t._id ? "border-amber-300 bg-amber-50 text-amber-700" : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
+                    }`}
+                  >
+                    {t.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => { setSelectingTask(false); setNextTaskId(""); onEnd(); }} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
+            End
+          </button>
+          <button onClick={handleConfirmTask} disabled={!nextTaskId} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
+            Start Work
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center space-y-5">
+      <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
+        {isWork
+          ? timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.topic || "Working..."
+          : "Break"}
+      </div>
+
+      {/* Multi-ring */}
+      <div className="relative w-72 h-72 mx-auto flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 240 240">
+          {Array.from({ length: maxRings }).map((_, i) => {
+            const r = RING_R - i * RING_GAP;
+            const prog = rings[i]?.progress ?? (i < rings.length ? 100 : 0);
+            return (
+              <circle
+                key={i}
+                cx="120" cy="120" r={r}
+                fill="none"
+                stroke={ringColor}
+                strokeWidth={RING_STROKE}
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * r}
+                strokeDashoffset={prog > 0 ? (2 * Math.PI * r) - (prog / 100) * (2 * Math.PI * r) : 2 * Math.PI * r}
+                className="transition-all duration-500"
+                style={{ opacity: prog > 0 ? (i === rings.length - 1 ? 1 : 0.4) : 0.1 }}
+              />
+            );
+          })}
+        </svg>
+        <span className={`text-5xl font-bold font-pomo relative z-10 ${accentColor}`}>
+          {timer.isPaused ? "Paused" : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`}
+        </span>
+      </div>
+
+      <p className={`text-sm font-bold uppercase tracking-wider ${accentColor}`}>
+        {isWork ? `${Math.floor(elapsed / 60)}m elapsed` : "break"}
+      </p>
+
+      <div className="flex gap-2 justify-center">
+        <button
+          onClick={handleTogglePause}
+          className={`px-5 py-2.5 text-white font-bold rounded-xl text-sm transition-colors shadow-sm ${bgColor}`}
+        >
+          {timer.isPaused ? "Resume" : "Pause"}
+        </button>
+        {isWork ? (
+          <button
+            onClick={handleTakeBreak}
+            className="px-5 py-2.5 bg-mint-600 hover:bg-mint-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+          >
+            Break
+          </button>
+        ) : (
+          <button
+            onClick={handleResumeWork}
+            className="px-5 py-2.5 bg-amber-400 hover:bg-amber-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+          >
+            Work
+          </button>
+        )}
+        <button
+          onClick={handleEnd}
+          className="px-5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl text-sm transition-colors"
+        >
+          End
         </button>
       </div>
     </div>
