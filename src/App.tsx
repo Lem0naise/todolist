@@ -12,7 +12,7 @@ import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { getTimerInstance, stopTimer, persist, restoreTimer } from "./components/pomo/timerState";
-import { usePomoData } from "./components/pomo/usePomoData";
+import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
@@ -63,7 +63,7 @@ function MainApp() {
         if (timer.phase?.type === "work") {
           const d = new Date();
           addSession(
-            d.toISOString().split("T")[0],
+            getLocalDate(),
             d.toTimeString().split(" ")[0],
             timer.duration,
             timer.topic || timer.taskName || "Work",
@@ -133,7 +133,6 @@ function MainApp() {
         {activeTab === "pomo" && (
           <PomoView
             pomoTick={pomoTick}
-            activeTab={activeTab}
           />
         )}
         {activeTab === "settings" && (

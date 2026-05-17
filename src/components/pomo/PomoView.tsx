@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo } from "./timerState";
+import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo, consumeCycleCompleted } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -10,11 +10,11 @@ import {
   getStatistics,
   getTotalsByDate,
   TOPIC_COLORS,
+  getLocalDate,
   type PomoSession,
   type PomoSettings,
   type CycleBlock,
 } from "./usePomoData";
-import type { Tab } from "../Nav";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
 
@@ -47,13 +47,15 @@ export function PomoView({
   pomoTick,
 }: {
   pomoTick: number;
-  activeTab: Tab;
 }) {
   const [view, setView] = useState<PomoView>(() => {
     const timer = getTimerInstance();
     return timer?.isRunning ? "timer" : "menu";
   });
-  const [pomoMode, setPomoMode] = useState<"timer" | "stopwatch">("timer");
+  const [pomoMode, setPomoMode] = useState<"timer" | "stopwatch">(() => {
+    const timer = getTimerInstance();
+    return timer?.mode === "stopwatch" ? "stopwatch" : "timer";
+  });
   const [settings, setSettings] = useState<PomoSettings>(loadSettings);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -91,7 +93,7 @@ export function PomoView({
           onModeChange={setPomoMode}
           hasActiveTimer={!!timer?.isRunning}
           onResume={() => setView("timer")}
-          onBegin={() => setView(pomoMode === "stopwatch" ? "begin" : "begin")}
+          onBegin={() => setView("begin")}
           onLog={() => setView("log")}
           onSummary={() => setView("summary")}
         />
@@ -671,6 +673,11 @@ function TimerView({
   const prevPhaseRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Check for cycle completion from App tick (timer instance already nulled)
+    if (!timer && consumeCycleCompleted()) {
+      onComplete();
+      return;
+    }
     if (!timer?.isRunning) return;
     const currentIdx = timer.currentPhaseIndex;
     if (prevPhaseRef.current !== null && prevPhaseRef.current !== currentIdx) {
@@ -694,11 +701,12 @@ function TimerView({
   }
 
   const handleEndCycle = () => {
-    if (timer.isRunning && timer.phase?.type === "work") {
+    if (!timer.isRunning) { stopTimer(); onEnd(); return; }
+    if (timer.phase?.type === "work") {
       const elapsed = timer.stop();
       if (elapsed > 0) {
         const d = new Date();
-        addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], elapsed, timer.topic);
+        addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, timer.topic);
       }
     } else {
       timer.stop();
@@ -708,10 +716,11 @@ function TimerView({
   };
 
   const handleSkip = () => {
+    if (!timer.isRunning || timer.isComplete()) return;
     if (timer.phase?.type === "work") {
       const d = new Date();
       const elapsed = timer.stop();
-      addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], elapsed, timer.topic);
+      addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, timer.topic);
     } else {
       timer.stop();
     }
@@ -1217,7 +1226,7 @@ function StopwatchView({
     if (elapsedMins > 0 && timer.subMode === "work") {
       const d = new Date();
       addSession(
-        d.toISOString().split("T")[0],
+        getLocalDate(),
         d.toTimeString().split(" ")[0],
         elapsedMins,
         timer.topic || timer.taskName || "Work",
@@ -1390,7 +1399,7 @@ function LogView({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDate());
   const [minutes, setMinutes] = useState("25");
   const [topic, setTopic] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -1413,7 +1422,7 @@ function LogView({
   const handleSave = async () => {
     const mins = parseFloat(minutes);
     if (!date || !mins || mins <= 0) return;
-    await addSession(date, "00:00:00", mins, topic.trim());
+    await addSession(date, new Date().toTimeString().split(" ")[0], mins, topic.trim());
     onDone();
   };
 

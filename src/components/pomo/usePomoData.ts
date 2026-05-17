@@ -83,7 +83,7 @@ export function usePomoData() {
   return { sessions, addSession, removeSession, clearAll };
 }
 
-function getLocalDate(): string {
+export function getLocalDate(): string {
   return new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local timezone
 }
 

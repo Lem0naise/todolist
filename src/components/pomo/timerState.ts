@@ -120,8 +120,18 @@ export function stopTimer(): void {
   if (instance) {
     instance.stop();
   }
+  cycleJustCompleted = true;
   instance = null;
   localStorage.removeItem(PERSIST_KEY);
+}
+
+let cycleJustCompleted = false;
+export function consumeCycleCompleted(): boolean {
+  if (cycleJustCompleted) {
+    cycleJustCompleted = false;
+    return true;
+  }
+  return false;
 }
 
 export function clearTimer(): void {
