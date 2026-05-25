@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { useDarkMode } from "../hooks/useDarkMode";
 
 export type Tab = "combined" | "today" | "todos" | "pomo" | "settings";
 
@@ -10,7 +9,6 @@ interface Props {
 }
 
 export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
-  const { dark, toggle: toggleDark } = useDarkMode();
 
   const tabs: { id: Tab; label: string; icon: ReactNode; shortcut: string }[] = [
     {
@@ -110,27 +108,6 @@ export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
         ))}
 
         <div className="flex-1" />
-
-        <button
-          onClick={toggleDark}
-          title={dark ? "Switch to light mode" : "Switch to dark mode"}
-          className="mx-2 mb-4 rounded-xl flex items-center gap-3 px-2 py-2.5 text-stone-400 hover:text-stone-600 hover:bg-cream-100 transition-all flex-shrink-0"
-        >
-          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">
-            {dark ? (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </span>
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-sm font-medium whitespace-nowrap">
-            {dark ? "Light mode" : "Dark mode"}
-          </span>
-        </button>
       </nav>
 
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-cream border-t border-cream-200">

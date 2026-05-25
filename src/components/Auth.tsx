@@ -3,7 +3,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 
 type Mode = "signin" | "signup";
 
-export function Auth() {
+export function Auth({ onContinueAsGuest }: { onContinueAsGuest: () => void }) {
   const { signIn } = useAuthActions();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -125,6 +125,18 @@ export function Auth() {
                   : "Create account"}
             </button>
           </form>
+
+          <div className="mt-5 pt-4 border-t border-cream-200 text-center">
+            <button
+              onClick={onContinueAsGuest}
+              className="text-xs font-bold text-stone-400 hover:text-stone-600 transition-colors"
+            >
+              Continue as guest
+            </button>
+            <p className="text-[10px] text-stone-300 mt-1">
+              Your data will be stored in this browser only
+            </p>
+          </div>
         </div>
       </div>
     </div>

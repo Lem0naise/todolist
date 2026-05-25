@@ -9,7 +9,7 @@ type SubTask = { id: string; title: string; done: boolean };
 interface Props {
   onClose: () => void;
   editTodo?: {
-    _id: Id<"todos">;
+    _id: string;
     title: string;
     description?: string;
     dueDate?: string;
@@ -17,9 +17,12 @@ interface Props {
     category?: Category;
     subTasks?: SubTask[];
     manualProgress?: number;
-    linkedEventId?: Id<"timetableEvents">;
-    moduleId?: Id<"modules">;
+    linkedEventId?: string;
+    moduleId?: string;
   };
+  isGuest?: boolean;
+  onGuestCreate?: (data: Record<string, unknown>) => void;
+  onGuestUpdate?: (id: string, data: Record<string, unknown>) => void;
 }
 
 function genId() {
@@ -48,7 +51,7 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: "lecture_catchup", label: "Catchup" },
 ];
 
-export function TodoModal({ onClose, editTodo }: Props) {
+export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUpdate }: Props) {
   const createTodo = useMutation(api.todos.create);
   const updateTodo = useMutation(api.todos.update);
   const timetableEvents = useQuery(api.timetable.list);
@@ -87,12 +90,30 @@ export function TodoModal({ onClose, editTodo }: Props) {
           ? { subTasks: subTasks.length > 0 ? subTasks : undefined, manualProgress }
           : {};
 
+      if (isGuest && onGuestCreate && onGuestUpdate) {
+        const data = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          dueDate: dueDate || undefined,
+          highPriority,
+          category,
+          ...extras,
+        };
+        if (editTodo) {
+          onGuestUpdate(editTodo._id, data);
+        } else {
+          onGuestCreate(data);
+        }
+        onClose();
+        return;
+      }
+
       const eventId = linkedEventId ? (linkedEventId as Id<"timetableEvents">) : undefined;
       const modId = moduleId ? (moduleId as Id<"modules">) : undefined;
 
       if (editTodo) {
         await updateTodo({
-          id: editTodo._id,
+          id: editTodo._id as Id<"todos">,
           title: title.trim(),
           description: description.trim() || undefined,
           dueDate: dueDate || undefined,

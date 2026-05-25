@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { SchedulePanel } from "./SchedulePanel";
 import { TasksPanel } from "./TasksPanel";
+import { useGuest } from "../../hooks/useGuestMode";
 
 function getTodayStr() {
   return new Date().toISOString().split("T")[0];
@@ -13,6 +14,7 @@ export function CombinedView({
   onGoToTodos: () => void;
   onGoToSchedule: () => void;
 }) {
+  const { isGuest } = useGuest();
   const todayStr = getTodayStr();
   const [now, setNow] = useState(new Date());
 
@@ -44,11 +46,18 @@ export function CombinedView({
       <div className="px-4 pb-6 mx-auto xl:max-w-7xl max-w-5xl">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="lg:w-[55%]">
-            <SchedulePanel
-              todayStr={todayStr}
-              now={now}
-              onGoToSchedule={onGoToSchedule}
-            />
+            {isGuest ? (
+              <div className="bg-white rounded-2xl border border-cream-200 p-6 text-center space-y-3">
+                <p className="text-sm font-bold text-stone-500">Sign in to see your timetable</p>
+                <p className="text-xs text-stone-400">Import your uni schedule to track classes alongside your tasks.</p>
+              </div>
+            ) : (
+              <SchedulePanel
+                todayStr={todayStr}
+                now={now}
+                onGoToSchedule={onGoToSchedule}
+              />
+            )}
           </div>
           <div className="flex-1">
             <TasksPanel todayStr={todayStr} onGoToTodos={onGoToTodos} />

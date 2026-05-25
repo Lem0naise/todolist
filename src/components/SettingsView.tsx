@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useGuest } from "../hooks/useGuestMode";
 import type { Id } from "../../convex/_generated/dataModel";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -25,7 +26,35 @@ type Module = {
   patterns: string[];
 };
 
-export function SettingsView({ onSignOut }: { onSignOut: () => void }) {
+export function SettingsView({ onSignOut, onNavigateToAuth }: { onSignOut: () => void; onNavigateToAuth: () => void }) {
+  const { isGuest } = useGuest();
+
+  if (isGuest) {
+    return (
+      <div className="p-3 max-w-2xl mx-auto pb-24">
+        <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">settings</h2>
+        <div className="bg-white rounded-2xl border border-cream-200 p-6 text-center space-y-4">
+          <p className="text-sm text-stone-500">
+            Sign in to access timetable import, module management, and full settings.
+          </p>
+          <p className="text-xs text-stone-400">
+            Your guest data is stored in this browser only.
+          </p>
+          <button
+            onClick={onNavigateToAuth}
+            className="px-5 py-2 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+          >
+            Sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <SettingsAuth onSignOut={onSignOut} />;
+}
+
+function SettingsAuth({ onSignOut }: { onSignOut: () => void }) {
   const [activeTab, setActiveTab] = useState<"timetable" | "modules" | "account">("timetable");
 
   return (

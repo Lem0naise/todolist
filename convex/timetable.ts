@@ -179,6 +179,8 @@ export const removeByFeed = mutation({
   handler: async (ctx, { feedId }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
+    const feed = await ctx.db.get(feedId);
+    if (!feed || feed.userId !== userId) throw new Error("Not found");
     const events = await ctx.db
       .query("timetableEvents")
       .withIndex("by_feed", (q) => q.eq("icalFeedId", feedId))

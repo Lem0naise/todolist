@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
+import { useGuest } from "../../hooks/useGuestMode";
+import { useGuestTodos } from "../../hooks/useGuestTodos";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
 import { FilterBar } from "./FilterBar";
 import { CompletedSection } from "./CompletedSection";
@@ -13,6 +16,7 @@ import {
   type FilterState,
   type Todo,
   type Module,
+  type Category,
   effectiveCategory,
 } from "./utils";
 
@@ -62,17 +66,66 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     localStorage.setItem("unitrack:filter", JSON.stringify(filter));
   }, [filter]);
 
+  const { isGuest } = useGuest();
+
   const modulesQuery = useQuery(api.modules.list);
   const modules = useLocalCache<Module[]>("modules", modulesQuery) as Module[] | null | undefined;
 
   const liveTodos = useQuery(api.todos.list, { includeCompleted: true });
-  const todos = useLocalCache<Todo[]>("todos:all", liveTodos) as Todo[] | null | undefined;
+  const cachedTodos = useLocalCache<Todo[]>("todos:all", liveTodos) as Todo[] | null | undefined;
+
+  const guestTodoData = useGuestTodos(isGuest);
+
+  const todos: Todo[] | null | undefined = isGuest
+    ? (guestTodoData.todos as unknown as Todo[])
+    : cachedTodos;
 
   const completeTodo = useMutation(api.todos.complete);
-  const removeTodo = useMutation(api.todos.remove);
-  const updateSubTasks = useMutation(api.todos.updateSubTasks);
-  const updateProgress = useMutation(api.todos.updateProgress);
-  const reorderTodos = useMutation(api.todos.reorder);
+  const _removeTodo = useMutation(api.todos.remove);
+  const _updateSubTasks = useMutation(api.todos.updateSubTasks);
+  const _updateProgress = useMutation(api.todos.updateProgress);
+  const reorderMutation = useMutation(api.todos.reorder);
+
+  // Guest-compatible CRUD callbacks
+  const handleComplete = (id: string, completed: boolean) => {
+    if (isGuest) {
+      guestTodoData.complete(id, completed);
+    } else {
+      completeTodo({ id: id as Id<"todos">, completed });
+    }
+  };
+
+  const handleRemove = (id: string) => {
+    if (isGuest) {
+      guestTodoData.remove(id);
+    } else {
+      _removeTodo({ id: id as Id<"todos"> });
+    }
+  };
+
+  const handleSubTaskUpdate = (id: string, subTasks: { id: string; title: string; done: boolean }[]) => {
+    if (isGuest) {
+      guestTodoData.updateSubTasks(id, subTasks);
+    } else {
+      _updateSubTasks({ id: id as Id<"todos">, subTasks });
+    }
+  };
+
+  const handleProgressUpdate = (id: string, manualProgress: number) => {
+    if (isGuest) {
+      guestTodoData.updateProgress(id, manualProgress);
+    } else {
+      _updateProgress({ id: id as Id<"todos">, manualProgress });
+    }
+  };
+
+  const handleReorder = (updates: { id: string; manualOrder: number }[]) => {
+    if (isGuest) {
+      guestTodoData.reorder(updates);
+    } else {
+      reorderMutation({ updates: updates as { id: Id<"todos">; manualOrder: number }[] });
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -102,9 +155,9 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
       if (oldIndex === -1 || newIndex === -1) return;
 
       const newOrder = arrayMove(items, oldIndex, newIndex);
-      reorderTodos({
-        updates: newOrder.map((t, idx) => ({ id: t._id, manualOrder: idx })),
-      });
+      handleReorder(
+        newOrder.map((t, idx) => ({ id: t._id, manualOrder: idx })),
+      );
     }
   };
 
@@ -160,11 +213,11 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   };
 
   const handleToggleDone = (todo: Todo) => {
-    completeTodo({ id: todo._id, completed: !todo.completed });
+    handleComplete(todo._id, !todo.completed);
   };
 
   const handleDelete = (todo: Todo) => {
-    if (confirm("Delete this task?")) removeTodo({ id: todo._id });
+    if (confirm("Delete this task?")) handleRemove(todo._id);
   };
 
   const handleSubTaskToggle = (todo: Todo, stId: string) => {
@@ -172,11 +225,11 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     const updated = todo.subTasks.map((s) =>
       s.id === stId ? { ...s, done: !s.done } : s,
     );
-    updateSubTasks({ id: todo._id, subTasks: updated });
+    handleSubTaskUpdate(todo._id, updated);
   };
 
   const handleProgressChange = (todo: Todo, val: number) => {
-    updateProgress({ id: todo._id, manualProgress: val });
+    handleProgressUpdate(todo._id, val);
   };
 
   const renderItem = (item: Todo, isCatchup = false) => (
@@ -384,20 +437,32 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                           {moduleItems.length}
                         </span>
                       </h4>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
                       <SortableContext items={moduleItems.map((t) => t._id)} strategy={verticalListSortingStrategy}>
                         {moduleItems.map((item) => renderItem(item, effectiveCategory(item) === "lecture_catchup"))}
                       </SortableContext>
+                    </DndContext>
                     </div>
                   );
                 })}
             </div>
           ) : (
             <div className="overflow-y-auto">
-              <SortableContext items={sorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-1">
-                  {sorted.map((item) => renderItem(item))}
-                </div>
-              </SortableContext>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={sorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-1">
+                    {sorted.map((item) => renderItem(item))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )}
 
@@ -422,7 +487,31 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
       {showModal && (
         <TodoModal
           onClose={() => { setShowModal(false); setEditTodo(null); }}
-          editTodo={editTodo ?? undefined}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          editTodo={editTodo as any}
+          isGuest={isGuest}
+          onGuestCreate={isGuest ? (data: Record<string, unknown>) => {
+            guestTodoData.create({
+              title: data.title as string,
+              description: data.description as string,
+              dueDate: data.dueDate as string,
+              highPriority: data.highPriority as boolean,
+              category: data.category as Category,
+              subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
+              manualProgress: data.manualProgress as number,
+            });
+          } : undefined}
+          onGuestUpdate={isGuest ? (id: string, data: Record<string, unknown>) => {
+            guestTodoData.update(id, {
+              title: data.title as string,
+              description: data.description as string,
+              dueDate: data.dueDate as string,
+              highPriority: data.highPriority as boolean,
+              category: data.category as Category,
+              subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
+              manualProgress: data.manualProgress as number,
+            });
+          } : undefined}
         />
       )}
     </div>

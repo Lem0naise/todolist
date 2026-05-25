@@ -35,8 +35,6 @@
   --color-mint-600: #359e7b;
 }
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 * {
   box-sizing: border-box;
 }
@@ -51,34 +49,19 @@ body {
   color: #4a3728;
 }
 
-body.dark, .dark body {
-  background-color: #1a1720;
-  color: #e2d9e8;
-}
-
 #root {
   min-height: 100svh;
 }
 
-/* Cute scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #e8d5f0; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: #d4b8e6; }
 
-.dark ::-webkit-scrollbar-thumb { background: #3d2a4a; }
-.dark ::-webkit-scrollbar-thumb:hover { background: #543a65; }
-
-/* Smooth transitions for dark/light */
-.dark body, body { transition: background-color 0.2s ease, color 0.2s ease; }
-
-/* Cute focus ring */
 *:focus-visible {
   outline: 2px solid #e8a0bf;
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* Selection color */
 ::selection { background: #fce7ed; color: #4a3728; }
-.dark ::selection { background: #5c3d5e; color: #f0e4f4; }

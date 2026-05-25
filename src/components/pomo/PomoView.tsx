@@ -15,6 +15,8 @@ import {
   type PomoSettings,
   type CycleBlock,
 } from "./usePomoData";
+import { useGuest } from "../../hooks/useGuestMode";
+import { useGuestPomoSessions } from "../../hooks/useGuestPomoSessions";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
 
@@ -59,11 +61,17 @@ export function PomoView({
   const [settings, setSettings] = useState<PomoSettings>(loadSettings);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const { sessions, addSession } = usePomoData();
+  const { isGuest } = useGuest();
+  const authPomo = usePomoData();
+  const guestPomo = useGuestPomoSessions(isGuest);
+  const { sessions, addSession } = isGuest ? guestPomo : authPomo;
+
   const todosQuery = useQuery(api.todos.list, { includeCompleted: false });
-  const todos = (todosQuery ?? []) as { _id: string; title: string; moduleName?: string; category?: string }[];
+  const todos: { _id: string; title: string; moduleName?: string; category?: string }[] =
+    isGuest ? [] : (todosQuery ?? []) as { _id: string; title: string; moduleName?: string; category?: string }[];
   const modulesQuery = useQuery(api.modules.list);
-  const modules = (modulesQuery ?? []) as { _id: string; name: string }[];
+  const modules: { _id: string; name: string }[] =
+    isGuest ? [] : (modulesQuery ?? []) as { _id: string; name: string }[];
 
   const updateSettings = (s: PomoSettings) => {
     setSettings(s);

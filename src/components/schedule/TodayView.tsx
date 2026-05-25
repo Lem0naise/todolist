@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
+import { useGuest } from "../../hooks/useGuestMode";
 import { TodoModal } from "../todos/TodoModal";
 import { WeekNav } from "./WeekNav";
 import { EventCard } from "./EventCard";
@@ -82,6 +83,7 @@ export function TodayView({
   onGoToTodos: () => void;
   initialDate?: string;
 }) {
+  const { isGuest } = useGuest();
   const todayStr = getTodayStr();
   const [selectedDate, setSelectedDate] = useState(initialDate ?? todayStr);
   const [editingTodo, setEditingTodo] = useState<LinkedTodo | null>(null);
@@ -90,14 +92,6 @@ export function TodayView({
     event: TodayEvent;
     date: string;
   } | null>(null);
-
-  useEffect(() => {
-    if (initialDate) setSelectedDate(initialDate);
-  }, [initialDate]);
-
-  useEffect(() => {
-    setSelectedDate(todayStr);
-  }, [todayStr]);
 
   const dateInfo = getDateInfo(selectedDate);
   const weekDays = getWeekDays(selectedDate);
@@ -179,6 +173,19 @@ export function TodayView({
   const goToNextWeek = () => setSelectedDate(offsetDate(selectedDate, 7));
 
   const noEvents = !events || events.length === 0;
+
+  if (isGuest) {
+    return (
+      <div className="p-3 max-w-4xl mx-auto min-h-screen">
+        <div className="flex items-center justify-center h-48">
+          <div className="text-center">
+            <p className="text-sm font-bold text-stone-500">Sign in to see your schedule</p>
+            <p className="text-xs text-stone-400 mt-1">Import your timetable to track classes alongside tasks.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 max-w-4xl mx-auto">

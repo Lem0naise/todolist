@@ -13,16 +13,23 @@ import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { getTimerInstance, stopTimer, persist, restoreTimer } from "./components/pomo/timerState";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
+import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
+import { GuestContext } from "./hooks/useGuestMode";
 
-function MainApp() {
+function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateToAuth: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
   const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
   const [pomoTick, setPomoTick] = useState(0);
+  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
 
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
-  const { addSession } = usePomoData();
+
+  // Pomo data — Convex when authenticated, localStorage when guest
+  const authenticatedPomo = usePomoData();
+  const guestPomo = useGuestPomoSessions(isGuest);
+  const { addSession } = isGuest ? guestPomo : authenticatedPomo;
 
   // Restore persisted timer on mount
   useEffect(() => {
@@ -31,6 +38,7 @@ function MainApp() {
 
   const processMissed = useMutation(api.occurrences.processMissedEvents);
   useEffect(() => {
+    if (isGuest) return;
     const todayStr = new Date().toISOString().split("T")[0];
     const key = `unitrack:processed:${todayStr}`;
     if (localStorage.getItem(key)) return;
@@ -39,7 +47,7 @@ function MainApp() {
       .catch((err) => {
         console.warn("Failed to process missed events:", err);
       });
-  }, [processMissed]);
+  }, [processMissed, isGuest]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -50,7 +58,7 @@ function MainApp() {
     setActiveTab("today");
   };
 
-  // Pomo timer interval — runs continuously at App level so it survives tab switches
+  // Pomo timer interval
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     tickRef.current = setInterval(() => {
@@ -103,55 +111,73 @@ function MainApp() {
   }, []);
 
   const timer = getTimerInstance();
-  const showFloating =
-    activeTab !== "pomo" && timer?.isRunning;
+  const showFloating = activeTab !== "pomo" && timer?.isRunning;
 
   return (
-    <div className="h-screen flex flex-col bg-cream">
-      <Nav
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        todoBadge={todoBadge}
-      />
+    <GuestContext.Provider value={{ isGuest }}>
+      <div className="h-screen flex flex-col bg-cream">
+        <Nav
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          todoBadge={todoBadge}
+        />
 
-      <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0 relative">
-        {activeTab === "combined" && (
-          <CombinedView
-            onGoToTodos={() => setActiveTab("todos")}
-            onGoToSchedule={() => setActiveTab("today")}
-          />
+        {isGuest && !guestBannerDismissed && (
+          <div className="sm:pl-14 flex items-center justify-between px-4 py-2 bg-rose-50 border-b border-rose-100 text-xs font-bold text-rose-500 flex-shrink-0">
+            <span>
+              Guest mode — data stored in this browser only.
+              <span className="hidden sm:inline"> Sign in to sync and import your timetable.</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={onNavigateToAuth} className="px-2 py-1 bg-rose-400 text-white rounded-lg text-[10px] hover:bg-rose-500">
+                Sign in
+              </button>
+              <button onClick={() => setGuestBannerDismissed(true)} className="text-rose-300 hover:text-rose-400 text-lg leading-none">
+                ×
+              </button>
+            </div>
+          </div>
         )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0 relative">
+          {activeTab === "combined" && (
+            <CombinedView
+              onGoToTodos={() => setActiveTab("todos")}
+              onGoToSchedule={() => setActiveTab("today")}
+            />
+          )}
         {activeTab === "today" && (
           <TodayView
+            key={navigateToDate ?? "today"}
             onGoToTodos={() => setActiveTab("todos")}
             initialDate={navigateToDate}
           />
         )}
-        {activeTab === "todos" && (
-          <TodosView onNavigateToDate={handleNavigateToDate} />
-        )}
-        {activeTab === "pomo" && (
-          <PomoView
-            pomoTick={pomoTick}
-          />
-        )}
-        {activeTab === "settings" && (
-          <SettingsView onSignOut={handleSignOut} />
-        )}
+          {activeTab === "todos" && (
+            <TodosView onNavigateToDate={handleNavigateToDate} />
+          )}
+          {activeTab === "pomo" && (
+            <PomoView pomoTick={pomoTick} />
+          )}
+          {activeTab === "settings" && (
+            <SettingsView onSignOut={handleSignOut} onNavigateToAuth={onNavigateToAuth} />
+          )}
 
-        {showFloating && (
-          <FloatingPomo
-            timer={timer!}
-            onNavigate={() => setActiveTab("pomo")}
-          />
-        )}
+          {showFloating && (
+            <FloatingPomo
+              timer={timer!}
+              onNavigate={() => setActiveTab("pomo")}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </GuestContext.Provider>
   );
 }
 
 export function App() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const [isGuest, setIsGuest] = useState(false);
 
   if (isLoading) {
     return (
@@ -161,11 +187,11 @@ export function App() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <Auth />;
+  if (!isAuthenticated && !isGuest) {
+    return <Auth onContinueAsGuest={() => setIsGuest(true)} />;
   }
 
-  return <MainApp />;
+  return <MainApp isGuest={isGuest} onNavigateToAuth={() => setIsGuest(false)} />;
 }
 
 export default App;

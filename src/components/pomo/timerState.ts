@@ -117,7 +117,7 @@ export function stopTimer(): void {
     mins: instance?.getCompletedWorkMinutes() ?? 0,
     topic: instance?.topic ?? "",
   };
-  if (instance) {
+  if (instance && instance.isRunning) {
     instance.stop();
   }
   cycleJustCompleted = true;
