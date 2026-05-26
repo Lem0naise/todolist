@@ -19,7 +19,7 @@ export function FloatingPomo({
   const elapsed = timer.getElapsedSeconds();
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
-  const bg = isStopwatch ? "bg-amber-400" : timer.phase?.type === "break" ? "bg-mint-400" : "bg-rose-400";
+  const bg = isStopwatch ? "bg-amber-400" : timer.phase?.type === "break" ? "bg-mint-500" : "bg-rose-400";
   const pulse = timer.isPaused ? "" : "animate-pulse";
 
   return (

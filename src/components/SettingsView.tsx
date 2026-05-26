@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useGuest } from "../hooks/useGuestMode";
+import { getSplashSoundEnabled, toggleSplashSound } from "./pomo/SplashScreen";
 import type { Id } from "../../convex/_generated/dataModel";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -55,7 +56,7 @@ export function SettingsView({ onSignOut, onNavigateToAuth }: { onSignOut: () =>
 }
 
 function SettingsAuth({ onSignOut }: { onSignOut: () => void }) {
-  const [activeTab, setActiveTab] = useState<"timetable" | "modules" | "account">("timetable");
+  const [activeTab, setActiveTab] = useState<"timetable" | "modules" | "sound" | "account">("timetable");
 
   return (
     <div className="p-3 max-w-2xl mx-auto pb-24">
@@ -81,6 +82,14 @@ function SettingsAuth({ onSignOut }: { onSignOut: () => void }) {
           Modules
         </button>
         <button
+          onClick={() => setActiveTab("sound")}
+          className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
+            activeTab === "sound" ? "bg-white text-stone-700 shadow-sm" : "text-stone-400"
+          }`}
+        >
+          Sound
+        </button>
+        <button
           onClick={() => setActiveTab("account")}
           className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
             activeTab === "account" ? "bg-white text-stone-700 shadow-sm" : "text-stone-400"
@@ -94,6 +103,8 @@ function SettingsAuth({ onSignOut }: { onSignOut: () => void }) {
         <TimetableSettings />
       ) : activeTab === "modules" ? (
         <ModulesSettings />
+      ) : activeTab === "sound" ? (
+        <SoundSettings />
       ) : (
         <AccountSettings onSignOut={onSignOut} />
       )}
@@ -784,6 +795,60 @@ function ModulesSettings() {
               );
             })}
           </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SoundSettings() {
+  const [soundOn, setSoundOn] = useState(getSplashSoundEnabled);
+
+  const handleToggle = () => {
+    const newVal = toggleSplashSound();
+    setSoundOn(newVal);
+  };
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <h3 className="text-sm font-bold text-stone-600 mb-3">Pomo Sounds</h3>
+        <p className="text-xs text-stone-400 mb-4">
+          Play a chime when the splash screen appears between work and break phases.
+        </p>
+        <button
+          onClick={handleToggle}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm ${
+            soundOn
+              ? "bg-lavender-100 text-lavender-600 hover:bg-lavender-200"
+              : "bg-stone-100 text-stone-400 hover:bg-stone-200"
+          }`}
+        >
+          {soundOn ? "Sound: On" : "Sound: Off"}
+        </button>
+        {soundOn && (
+          <button
+            onClick={() => {
+              try {
+                const ctx = new AudioContext();
+                const notes = [523.25, 659.25, 783.99];
+                notes.forEach((f, i) => {
+                  const o = ctx.createOscillator();
+                  const g = ctx.createGain();
+                  o.type = "sine";
+                  o.frequency.value = f;
+                  const t = ctx.currentTime + i * 0.15;
+                  g.gain.setValueAtTime(0.2, t);
+                  g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                  o.connect(g); g.connect(ctx.destination);
+                  o.start(t); o.stop(t + 0.3);
+                });
+              } catch { /* AudioContext may not be available */ }
+            }}
+            className="ml-3 px-3 py-2.5 text-xs font-bold text-rose-400 hover:text-rose-500 rounded-xl bg-cream-50 hover:bg-cream-100 transition-colors"
+          >
+            Preview
+          </button>
         )}
       </section>
     </div>

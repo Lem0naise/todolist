@@ -25,6 +25,30 @@ export class PomoTimer {
   currentPhaseIndex = 0;
   totalWorkMinutes = 0;
   lastElapsedMins = 0;
+  splashUntil: Date | null = null;
+  splashLabel = "";
+
+  /** Enter splash buffer after a phase completes. The next phase starts after `seconds`. */
+  enterSplash(seconds = 10) {
+    this.splashUntil = new Date(Date.now() + seconds * 1000);
+    this.splashLabel = this.phase?.type === "work" ? "BREAK TIME" : "WORK STARTING";
+    this.isRunning = false;
+  }
+
+  /** Check if we're in the splash buffer period */
+  isInSplash(): boolean {
+    return this.splashUntil !== null;
+  }
+
+  /** Exit splash and advance to the next phase. Returns false if cycle is complete. */
+  exitSplash(): boolean {
+    this.splashUntil = null;
+    const hasMore = this.advancePhase();
+    if (!hasMore || this.isCycleComplete()) {
+      return false;
+    }
+    return true;
+  }
 
   initCycleWithBlocks(blocks: CycleBlock[]) {
     this.reset();

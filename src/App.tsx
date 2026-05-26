@@ -11,6 +11,7 @@ import { TodosView } from "./components/todos/TodosView";
 import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
+import { SplashScreen } from "./components/pomo/SplashScreen";
 import { getTimerInstance, stopTimer, persist, restoreTimer } from "./components/pomo/timerState";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
@@ -78,8 +79,12 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           );
           timer.addWorkMinutes(timer.duration);
         }
-        const hasMore = timer.advancePhase();
-        if (!hasMore || timer.isCycleComplete()) {
+        timer.enterSplash();
+      }
+
+      // Handle splash timer expiry
+      if (timer.isInSplash() && timer.splashUntil && Date.now() >= timer.splashUntil.getTime()) {
+        if (!timer.exitSplash()) {
           stopTimer();
         }
       }
@@ -170,6 +175,14 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             />
           )}
         </div>
+
+        {timer?.isInSplash() && (
+          <SplashScreen onSkip={() => {
+            if (!timer.exitSplash()) {
+              stopTimer();
+            }
+          }} />
+        )}
       </div>
     </GuestContext.Provider>
   );
