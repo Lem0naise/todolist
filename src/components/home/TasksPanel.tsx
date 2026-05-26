@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
+import { useGuest } from "../../hooks/useGuestMode";
 import { TodoModal } from "../todos/TodoModal";
 import { PanelCard } from "./PanelCard";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -67,6 +68,7 @@ export function TasksPanel({
   todayStr: string;
   onGoToTodos: () => void;
 }) {
+  const { isGuest } = useGuest();
   const [showModal, setShowModal] = useState(false);
   const liveTodos = useQuery(api.todos.list, { includeCompleted: false });
   const todos = (useLocalCache<Todo[]>("combined:todos", liveTodos) ??
@@ -85,7 +87,7 @@ export function TasksPanel({
           new Date(todayStr + "T12:00:00").getTime()) /
           86400000,
       );
-      return diff <= 3 || (diff < 0 && t.highPriority);
+      return diff <= 3 || t.highPriority;
     }) ?? [];
 
   const overdue = relevantTodos.filter((t) => t.dueDate && t.dueDate < todayStr);
@@ -103,6 +105,7 @@ export function TasksPanel({
       badge={totalCount > 0 ? `${totalCount} open` : undefined}
       action={{ label: "all tasks", onClick: onGoToTodos }}
       headerAction={
+        isGuest ? null : (
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition-colors"
@@ -112,6 +115,7 @@ export function TasksPanel({
           </svg>
           Add
         </button>
+        )
       }
     >
       {todos === undefined ? (
@@ -158,7 +162,7 @@ export function TasksPanel({
           )}
         </div>
       )}
-      {showModal && <TodoModal onClose={() => setShowModal(false)} />}
+      {showModal && !isGuest && <TodoModal onClose={() => setShowModal(false)} />}
     </PanelCard>
   );
 }

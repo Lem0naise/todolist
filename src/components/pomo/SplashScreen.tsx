@@ -73,13 +73,7 @@ export function SplashScreen({ onSkip }: { onSkip: () => void }) {
     }, 10000);
 
     const id = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(id);
-          return 0;
-        }
-        return c - 1;
-      });
+      setCountdown((c) => (c <= 1 ? 0 : c - 1));
     }, 1000);
 
     return () => {

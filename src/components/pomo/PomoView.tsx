@@ -1248,7 +1248,7 @@ function StopwatchView({
     const workMins = timer.stop();
     if (workMins > 0) {
       const d = new Date();
-      addSession(d.toISOString().split("T")[0], d.toTimeString().split(" ")[0], workMins, timer.topic || timer.taskName || "Work");
+      addSession(getLocalDate(), d.toTimeString().split(" ")[0], workMins, timer.topic || timer.taskName || "Work");
     }
     timer.startBreak();
     persist();

@@ -136,6 +136,13 @@ export function TodayView({
         completed: true,
       });
     }
+    // If toggling back to pending and there's a linked todo, un-complete it
+    if (newStatus === "pending" && event.occurrence?.todoId) {
+      await completeTodo({
+        id: event.occurrence.todoId,
+        completed: false,
+      });
+    }
     if (selectedWeekEvent && selectedWeekEvent.event._id === event._id) {
       setSelectedWeekEvent(null);
     }
