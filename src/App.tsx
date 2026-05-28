@@ -12,7 +12,7 @@ import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { SplashScreen } from "./components/pomo/SplashScreen";
-import { getTimerInstance, stopTimer, persist, restoreTimer } from "./components/pomo/timerState";
+import { getTimerInstance, stopTimer, persist, restoreTimer, notifySessionSaved } from "./components/pomo/timerState";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
 import { GuestContext } from "./hooks/useGuestMode";
@@ -71,23 +71,19 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
       if (timer.isComplete()) {
         if (timer.phase?.type === "work") {
           const d = new Date();
+          const topic = timer.topic || timer.taskName || "Work";
           addSession(
             getLocalDate(),
             d.toTimeString().split(" ")[0],
             timer.duration,
-            timer.topic || timer.taskName || "Work",
+            topic,
           );
           timer.addWorkMinutes(timer.duration);
+          notifySessionSaved(timer.duration, topic);
         }
         timer.enterSplash();
       }
 
-      // Handle splash timer expiry
-      if (timer.isInSplash() && timer.splashUntil && Date.now() >= timer.splashUntil.getTime()) {
-        if (!timer.exitSplash()) {
-          stopTimer();
-        }
-      }
       setPomoTick((t) => t + 1);
     }, 200);
     return () => {

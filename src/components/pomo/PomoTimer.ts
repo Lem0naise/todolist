@@ -302,4 +302,40 @@ export class PomoTimer {
     this.currentPhaseIndex++;
     return this.startNextPhase();
   }
+
+  /** Append a new phase to the end of the cycle */
+  appendPhase(type: "work" | "short-break" | "long-break", duration: number, taskTopic?: string, taskName?: string) {
+    let workCount = 0;
+    for (const p of this.cyclePhases) {
+      if (p.type === "work") workCount++;
+    }
+    const phase: TimerPhase = {
+      type: type === "work" ? "work" : "break",
+      duration,
+      label: type === "work" ? `Work ${workCount + 1}` : type === "long-break" ? "Long Break" : "Short Break",
+      taskTopic: type === "work" ? taskTopic : undefined,
+      taskName: type === "work" ? taskName : undefined,
+    };
+    this.cyclePhases.push(phase);
+  }
+
+  /** Remove a future phase by index */
+  removeFuturePhase(idx: number): boolean {
+    if (idx <= this.currentPhaseIndex || idx >= this.cyclePhases.length) return false;
+    this.cyclePhases.splice(idx, 1);
+    return true;
+  }
+
+  /** Insert a break after the current phase and skip to it */
+  insertBreakAfterCurrent(duration: number): boolean {
+    const insertIdx = this.currentPhaseIndex + 1;
+    const breakPhase: TimerPhase = {
+      type: "break",
+      duration,
+      label: duration >= 15 ? "Long Break" : "Short Break",
+    };
+    this.cyclePhases.splice(insertIdx, 0, breakPhase);
+    this.currentPhaseIndex++;
+    return this.startNextPhase();
+  }
 }

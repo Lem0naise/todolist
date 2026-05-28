@@ -138,3 +138,14 @@ export function clearTimer(): void {
   instance = null;
   localStorage.removeItem(PERSIST_KEY);
 }
+
+// Session-save toast notification
+export let lastSavedSession: { mins: number; topic: string } | null = null;
+export function notifySessionSaved(mins: number, topic: string) {
+  lastSavedSession = { mins, topic };
+}
+export function consumeSavedSession(): { mins: number; topic: string } | null {
+  const s = lastSavedSession;
+  lastSavedSession = null;
+  return s;
+}

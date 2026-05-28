@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo, consumeCycleCompleted } from "./timerState";
+import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo, consumeCycleCompleted, consumeSavedSession, notifySessionSaved } from "./timerState";
 import {
   loadSettings,
   saveSettings,
@@ -17,6 +17,7 @@ import {
 } from "./usePomoData";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestPomoSessions } from "../../hooks/useGuestPomoSessions";
+import { FloatingPomo } from "./FloatingPomo";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
 
@@ -84,6 +85,19 @@ export function PomoView({
     return () => clearTimeout(id);
   }, []);
 
+  // Toast on session saves — polled via ref to avoid render-time side effects
+  const [savedToast, setSavedToast] = useState<{ mins: number; topic: string } | null>(null);
+  const savedToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    savedToastTimer.current = setInterval(() => {
+      const s = consumeSavedSession();
+      if (s) setSavedToast(s);
+    }, 500);
+    return () => {
+      if (savedToastTimer.current) clearInterval(savedToastTimer.current);
+    };
+  }, []);
+
   const timer = getTimerInstance();
 
   return (
@@ -133,8 +147,13 @@ export function PomoView({
           pomoTick={pomoTick}
           addSession={addSession}
           todos={todos}
+          settings={settings}
+          sessions={sessions}
           onComplete={() => setView("complete")}
           onEnd={() => setView("menu")}
+          onNavToStats={() => setView("summary")}
+          onNavToLog={() => setView("log")}
+          onNavToMenu={() => setView("menu")}
           showToast={showToast}
         />
       )}
@@ -181,6 +200,14 @@ export function PomoView({
             {toast.message}
           </div>
         </div>
+      )}
+
+      {savedToast && (
+        <SessionToast mins={savedToast.mins} topic={savedToast.topic} />
+      )}
+
+      {view !== "timer" && timer?.isRunning && (
+        <FloatingPomo timer={timer} onNavigate={() => setView("timer")} />
       )}
     </div>
   );
@@ -361,13 +388,15 @@ function BeginView({
   onStart: (blocks: CycleBlock[]) => void;
   onCancel: () => void;
 }) {
+  const [showCustomize, setShowCustomize] = useState(false);
   const [cycleBlocks, setCycleBlocks] = useState<CycleBlock[]>([
     { type: "work", duration: settings.work, id: genBlockId() },
-    { type: "short-break", duration: settings.shortBreak, id: genBlockId() },
-    { type: "work", duration: settings.work, id: genBlockId() },
-    { type: "long-break", duration: settings.longBreak, id: genBlockId() },
   ]);
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
+
+  const handleQuickStart = () => {
+    onStart(cycleBlocks);
+  };
 
   const addBlock = (type: CycleBlock["type"]) => {
     const dur = type === "work" ? settings.work : type === "short-break" ? settings.shortBreak : settings.longBreak;
@@ -402,24 +431,17 @@ function BeginView({
     });
   };
 
-  const handleStart = () => {
-    if (cycleBlocks.filter(b => b.type === "work").length === 0) return;
-    onStart(cycleBlocks);
-  };
-
   const getBlockLabel = (b: CycleBlock) =>
     b.type === "work" ? "Work" : b.type === "short-break" ? "Break" : "Long Break";
 
   const blockClass = (b: CycleBlock) =>
     b.type === "work" ? "border-rose-200 bg-rose-50/40" : "border-mint-200 bg-mint-50/40";
 
-  // Subject options for task selectors
   const subjectOptions = [...new Set([
     ...modules.map(m => m.name),
     ...todos.map(t => t.moduleName).filter(Boolean) as string[],
   ])].sort();
 
-  // Compute schedule preview timestamps
   const { scheduleTimes, totalMinutes } = useMemo(() => {
     const times: { block: CycleBlock; start: Date; end: Date }[] = [];
     let t = new Date().getTime();
@@ -431,232 +453,172 @@ function BeginView({
     return { scheduleTimes: times, totalMinutes: cycleBlocks.reduce((s, b) => s + b.duration, 0) };
   }, [cycleBlocks]);
 
+  const workCount = cycleBlocks.filter(b => b.type === "work").length;
+  const breakCount = cycleBlocks.filter(b => b.type !== "work").length;
+
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Build Cycle</h3>
+      <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Start Pomo</h3>
 
-      {/* Block rows */}
-      <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-1.5">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Blocks</p>
-          <button
-            onClick={() =>
-              setCycleBlocks([
-                { type: "work", duration: settings.work, id: genBlockId() },
-                { type: "short-break", duration: settings.shortBreak, id: genBlockId() },
-                { type: "work", duration: settings.work, id: genBlockId() },
-                { type: "long-break", duration: settings.longBreak, id: genBlockId() },
-              ])
-            }
-            className="text-[10px] font-bold text-rose-400 hover:text-rose-500 uppercase"
-          >
-            Reset
+      {/* Quick start */}
+      <div className="bg-white rounded-xl border border-cream-200 p-5 text-center space-y-4">
+        <p className="text-sm text-stone-500">
+          {showCustomize
+            ? `${workCount} work · ${breakCount} break${totalMinutes ? ` · ${totalMinutes}m` : ""}`
+            : `Start a ${settings.work}-minute work session`}
+        </p>
+        <button
+          onClick={handleQuickStart}
+          className="w-full py-3 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+        >
+          {showCustomize ? "Start Cycle" : "Start Working"}
+        </button>
+        {showCustomize && (
+          <button onClick={onCancel} className="text-xs font-bold text-stone-400 hover:text-stone-600">
+            Cancel
           </button>
-        </div>
-
-        {cycleBlocks.length === 0 ? (
-          <p className="text-sm text-stone-400 text-center py-6">Add blocks to plan your day</p>
-        ) : (
-          <div className="space-y-1">
-            {cycleBlocks.map((b, i) => {
-              const isWork = b.type === "work";
-              const selectedTask = isWork && b.taskId ? todos.find(t => t._id === b.taskId) : null;
-              const hasCustomTask = isWork && !b.taskId && (b.taskTopic || b.taskName);
-              const showTaskPicker = expandedTask === b.id;
-
-              return (
-                <div key={b.id}>
-                  <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border ${blockClass(b)}`}>
-                    <button
-                      onClick={() => moveBlock(b.id, -1)}
-                      disabled={i === 0}
-                      className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none"
-                    >
-                      &#8593;
-                    </button>
-                    <button
-                      onClick={() => moveBlock(b.id, 1)}
-                      disabled={i === cycleBlocks.length - 1}
-                      className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none"
-                    >
-                      &#8595;
-                    </button>
-
-                    <span className={`text-xs font-bold min-w-[60px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>
-                      {getBlockLabel(b)}
-                    </span>
-
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={b.duration}
-                      onChange={(e) => updateBlockDuration(b.id, parseFloat(e.target.value) || 1)}
-                      className="w-12 px-1.5 py-1 text-xs text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
-                    />
-                    <span className="text-[10px] text-stone-400">m</span>
-
-                    {/* Task selector for work blocks */}
-                    {isWork && (
-                      <button
-                        onClick={() => setExpandedTask(showTaskPicker ? null : b.id)}
-                        className={`flex-1 text-left px-2 py-1 rounded text-xs border truncate transition-colors ${
-                          selectedTask || hasCustomTask
-                            ? "border-rose-200 bg-rose-50/60 text-rose-600 font-medium"
-                            : "border-dashed border-cream-200 text-stone-300 italic hover:border-cream-300"
-                        }`}
-                      >
-                        {selectedTask
-                          ? `${selectedTask.moduleName || ""} ${selectedTask.moduleName ? "—" : ""} ${selectedTask.title}`
-                          : hasCustomTask
-                            ? `${b.taskTopic || ""} ${b.taskName ? "— " + b.taskName : ""}`
-                            : "Tap to assign task..."}
-                      </button>
-                    )}
-
-                    {!isWork && <div className="flex-1" />}
-
-                    <button
-                      onClick={() => removeBlock(b.id)}
-                      className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1"
-                    >
-                      ×
-                    </button>
-                  </div>
-
-                  {/* Inline task picker — grouped by module */}
-                  {showTaskPicker && isWork && (
-                    <div className="ml-12 mr-4 mt-1 mb-1 p-3 bg-cream-50 rounded-lg border border-cream-100 space-y-2 max-h-48 overflow-y-auto">
-                      {(() => {
-                        const groups: Record<string, typeof todos> = {};
-                        for (const t of todos) {
-                          const key = t.moduleName || "General";
-                          if (!groups[key]) groups[key] = [];
-                          groups[key].push(t);
-                        }
-                        return Object.entries(groups).sort(([a], [b]) => {
-                          if (a === "General") return 1;
-                          if (b === "General") return -1;
-                          return a.localeCompare(b);
-                        }).map(([modName, items]) => (
-                          <div key={modName}>
-                            <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1">
-                              {modName}
-                            </p>
-                            <div className="flex gap-1 flex-wrap">
-                              {items.map((t) => (
-                                <button
-                                  key={t._id}
-                                  onClick={() => {
-                                    updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title);
-                                    setExpandedTask(null);
-                                  }}
-                                  className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${
-                                    b.taskId === t._id
-                                      ? "border-rose-300 bg-rose-100 text-rose-600"
-                                      : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"
-                                  }`}
-                                >
-                                  {t.title}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                      <div className="flex gap-1.5 pt-1 border-t border-cream-200">
-                        <select
-                          value={b.taskTopic || ""}
-                          onChange={(e) => updateBlockTask(b.id, b.taskId || "", e.target.value, b.taskName || "")}
-                          className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
-                        >
-                          <option value="">Custom subject...</option>
-                          {subjectOptions.map(s => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={b.taskName || ""}
-                          onChange={(e) => updateBlockTask(b.id, b.taskId || "", b.taskTopic || "", e.target.value)}
-                          placeholder="Custom name"
-                          className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
-                        />
-                        <button
-                          onClick={() => setExpandedTask(null)}
-                          className="text-[10px] font-bold text-rose-400 hover:text-rose-500 flex-shrink-0"
-                        >
-                          Done
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         )}
-
-        <div className="flex gap-2 flex-wrap pt-2">
-          <button onClick={() => addBlock("work")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50 transition-colors">
-            + Work
-          </button>
-          <button onClick={() => addBlock("short-break")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
-            + Break
-          </button>
-          <button onClick={() => addBlock("long-break")} className="px-3 py-1.5 text-xs font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
-            + Long Break
-          </button>
-        </div>
+        <button
+          onClick={() => setShowCustomize(!showCustomize)}
+          className="text-xs font-bold text-stone-400 hover:text-stone-600"
+        >
+          {showCustomize ? "▲ Hide" : "▼ Customize cycle..."}
+        </button>
       </div>
 
-      {/* Schedule preview */}
-      {cycleBlocks.length > 0 && (
-        <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-2">
-          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-            Schedule ({totalMinutes}m total)
-          </p>
-          <div className="space-y-1">
-            {scheduleTimes.map(({ block, start, end }, i) => {
-              const isWork = block.type === "work";
-              const color = isWork ? "bg-rose-400" : "bg-mint-400";
-              const textColor = isWork ? "text-rose-500" : "text-mint-500";
-              const hasTask = block.taskTopic || block.taskName || block.taskId;
+      {/* Task selector */}
+      <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-1.5">
+        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Pick a task (optional)</p>
+        {todos.length > 0 ? (
+          <div className="flex gap-1.5 flex-wrap">
+            {todos.slice(0, 8).map((t) => {
+              const isSelected = cycleBlocks[0]?.taskId === t._id;
               return (
-                <div key={i} className="flex items-center gap-2.5 text-xs">
-                  <span className="w-10 text-right font-bold text-stone-400 flex-shrink-0">
-                    {formatTime(start)}
-                  </span>
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
-                  <span className={`font-bold min-w-[60px] ${textColor}`}>
-                    {getBlockLabel(block)}
-                  </span>
-                  <span className="text-stone-400">{block.duration}m</span>
-                  <span className="flex-1 text-stone-500 truncate">
-                    {hasTask
-                      ? block.taskName || block.taskTopic || "Task"
-                      : isWork
-                        ? <span className="text-stone-300 italic">no task</span>
-                        : null}
-                  </span>
-                  <span className="w-10 text-right text-stone-400 flex-shrink-0">
-                    {formatTime(end)}
-                  </span>
-                </div>
+                <button
+                  key={t._id}
+                  onClick={() => {
+                    const blocks = [...cycleBlocks];
+                    if (blocks[0] && blocks[0].type === "work") {
+                      blocks[0] = { ...blocks[0], taskId: t._id, taskTopic: t.moduleName || t.title, taskName: t.title };
+                      setCycleBlocks(blocks);
+                    }
+                  }}
+                  className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${isSelected ? "border-rose-300 bg-rose-100 text-rose-600" : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"}`}
+                >
+                  {t.moduleName && <span className="font-bold text-rose-400">{t.moduleName} — </span>}
+                  {t.title}
+                </button>
               );
             })}
           </div>
+        ) : (
+          <p className="text-[10px] text-stone-300 italic">No tasks yet — add some in the Tasks tab, or just start working</p>
+        )}
+      </div>
+
+      {/* Customize accordion */}
+      {showCustomize && (
+        <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Blocks</p>
+            <button
+              onClick={() =>
+                setCycleBlocks([
+                  { type: "work", duration: settings.work, id: genBlockId() },
+                  { type: "short-break", duration: settings.shortBreak, id: genBlockId() },
+                  { type: "work", duration: settings.work, id: genBlockId() },
+                  { type: "long-break", duration: settings.longBreak, id: genBlockId() },
+                ])
+              }
+              className="text-[10px] font-bold text-rose-400 hover:text-rose-500 uppercase"
+            >
+              Reset Classic
+            </button>
+          </div>
+
+          {cycleBlocks.length === 0 ? (
+            <p className="text-sm text-stone-400 text-center py-4">Add blocks to plan your day</p>
+          ) : (
+            <div className="space-y-1">
+              {cycleBlocks.map((b, i) => {
+                const isWork = b.type === "work";
+                const selectedTask = isWork && b.taskId ? todos.find(t => t._id === b.taskId) : null;
+                const hasCustomTask = isWork && !b.taskId && (b.taskTopic || b.taskName);
+                const showTaskPicker = expandedTask === b.id;
+
+                return (
+                  <div key={b.id}>
+                    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${blockClass(b)}`}>
+                      <button onClick={() => moveBlock(b.id, -1)} disabled={i === 0} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8593;</button>
+                      <button onClick={() => moveBlock(b.id, 1)} disabled={i === cycleBlocks.length - 1} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8595;</button>
+                      <span className={`text-xs font-bold min-w-[60px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>{getBlockLabel(b)}</span>
+                      <input type="number" min={1} step={1} value={b.duration} onChange={(e) => updateBlockDuration(b.id, parseFloat(e.target.value) || 1)} className="w-12 px-1.5 py-1 text-xs text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300" />
+                      <span className="text-[10px] text-stone-400">m</span>
+                      {isWork && (
+                        <button onClick={() => setExpandedTask(showTaskPicker ? null : b.id)} className={`flex-1 text-left px-2 py-1 rounded text-xs border truncate transition-colors ${selectedTask || hasCustomTask ? "border-rose-200 bg-rose-50/60 text-rose-600 font-medium" : "border-dashed border-cream-200 text-stone-300 italic hover:border-cream-300"}`}>
+                          {selectedTask ? `${selectedTask.moduleName || ""} ${selectedTask.moduleName ? "—" : ""} ${selectedTask.title}` : hasCustomTask ? `${b.taskTopic || ""} ${b.taskName ? "— " + b.taskName : ""}` : "Tap to assign task..."}
+                        </button>
+                      )}
+                      {!isWork && <div className="flex-1" />}
+                      <button onClick={() => removeBlock(b.id)} className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1">×</button>
+                    </div>
+                    {showTaskPicker && isWork && (
+                      <div className="ml-12 mr-4 mt-1 mb-1 p-2 bg-cream-50 rounded-lg border border-cream-100 space-y-1.5 max-h-44 overflow-y-auto">
+                        {(() => {
+                          const groups: Record<string, typeof todos> = {};
+                          for (const t of todos) { const key = t.moduleName || "General"; if (!groups[key]) groups[key] = []; groups[key].push(t); }
+                          return Object.entries(groups).sort(([a], [b]) => { if (a === "General") return 1; if (b === "General") return -1; return a.localeCompare(b); }).map(([modName, items]) => (
+                            <div key={modName}>
+                              <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1">{modName}</p>
+                              <div className="flex gap-1 flex-wrap">
+                                {items.map((t) => (
+                                  <button key={t._id} onClick={() => { updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title); setExpandedTask(null); }} className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${b.taskId === t._id ? "border-rose-300 bg-rose-100 text-rose-600" : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"}`}>{t.title}</button>
+                                ))}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                        <div className="flex gap-1.5 pt-1 border-t border-cream-200">
+                          <select value={b.taskTopic || ""} onChange={(e) => updateBlockTask(b.id, b.taskId || "", e.target.value, b.taskName || "")} className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"><option value="">Custom subject...</option>{subjectOptions.map(s => (<option key={s} value={s}>{s}</option>))}</select>
+                          <input type="text" value={b.taskName || ""} onChange={(e) => updateBlockTask(b.id, b.taskId || "", b.taskTopic || "", e.target.value)} placeholder="Custom name" className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300" />
+                          <button onClick={() => setExpandedTask(null)} className="text-[10px] font-bold text-rose-400 hover:text-rose-500 flex-shrink-0">Done</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex gap-2 flex-wrap pt-1">
+            <button onClick={() => addBlock("work")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50">+ Work</button>
+            <button onClick={() => addBlock("short-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Break</button>
+            <button onClick={() => addBlock("long-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Long Break</button>
+          </div>
+
+          {cycleBlocks.length > 0 && (
+            <div className="pt-2 border-t border-cream-100">
+              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Schedule ({totalMinutes}m)</p>
+              <div className="space-y-0.5">
+                {scheduleTimes.map(({ block, start, end }, i) => {
+                  const isWork = block.type === "work";
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-[10px]">
+                      <span className="w-10 text-right font-bold text-stone-400 flex-shrink-0">{formatTime(start)}</span>
+                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isWork ? "bg-rose-400" : "bg-mint-400"}`} />
+                      <span className={`font-bold min-w-[50px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>{getBlockLabel(block)}</span>
+                      <span className="text-stone-400">{block.duration}m</span>
+                      <span className="flex-1 text-stone-500 truncate">{block.taskName || (isWork ? <span className="text-stone-300 italic">no task</span> : "")}</span>
+                      <span className="w-10 text-right text-stone-400 flex-shrink-0">{formatTime(end)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
-          Cancel
-        </button>
-        <button onClick={handleStart} className="flex-1 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
-          Start Cycle
-        </button>
-      </div>
     </div>
   );
 }
@@ -666,19 +628,30 @@ function TimerView({
   pomoTick,
   addSession,
   todos,
+  settings,
+  sessions,
   onComplete,
   onEnd,
+  onNavToStats,
+  onNavToLog,
+  onNavToMenu,
   showToast,
 }: {
   pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
   todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  settings: PomoSettings;
+  sessions: PomoSession[];
   onComplete: () => void;
   onEnd: () => void;
+  onNavToStats: () => void;
+  onNavToLog: () => void;
+  onNavToMenu: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
 }) {
   const timer = getTimerInstance();
   const prevPhaseRef = useRef<number | null>(null);
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
     // Check for cycle completion from App tick (timer instance already nulled)
@@ -714,7 +687,9 @@ function TimerView({
       const elapsed = timer.stop();
       if (elapsed > 0) {
         const d = new Date();
-        addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, timer.topic);
+        const topic = timer.topic || timer.taskName || "Work";
+        addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+        notifySessionSaved(elapsed, topic);
       }
     } else {
       timer.stop();
@@ -728,7 +703,9 @@ function TimerView({
     if (timer.phase?.type === "work") {
       const d = new Date();
       const elapsed = timer.stop();
-      addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, timer.topic);
+      const topic = timer.topic || timer.taskName || "Work";
+      addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+      notifySessionSaved(elapsed, topic);
     } else {
       timer.stop();
     }
@@ -740,6 +717,40 @@ function TimerView({
       persist();
       showToast(`Skipped to ${timer.phase?.label}`, "success");
     }
+  };
+
+  const handleTakeBreak = () => {
+    if (!timer.isRunning) return;
+    if (timer.phase?.type === "break") {
+      // Already in break — skip it
+      handleSkip();
+      return;
+    }
+    // Save current work session
+    const d = new Date();
+    const elapsed = timer.stop();
+    const topic = timer.topic || timer.taskName || "Work";
+    addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+    notifySessionSaved(elapsed, topic);
+    // Insert break and skip to it
+    timer.insertBreakAfterCurrent(settings.shortBreak);
+    persist();
+    showToast("Break started!", "success");
+  };
+
+  const handleAddBlock = (type: "work" | "short-break" | "long-break") => {
+    if (!timer) return;
+    const dur = type === "work" ? settings.work : type === "short-break" ? settings.shortBreak : settings.longBreak;
+    timer.appendPhase(type, dur);
+    persist();
+    forceRender(n => n + 1);
+  };
+
+  const handleRemoveFuture = (idx: number) => {
+    if (!timer) return;
+    timer.removeFuturePhase(idx);
+    persist();
+    forceRender(n => n + 1);
   };
 
   const togglePause = () => {
@@ -809,7 +820,7 @@ function TimerView({
       </p>
 
       {/* Actions */}
-      <div className="flex gap-2 justify-center">
+      <div className="flex gap-2 justify-center flex-wrap">
         <button
           onClick={togglePause}
           className="px-5 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
@@ -817,21 +828,96 @@ function TimerView({
           {timer.isPaused ? "Resume" : "Pause"}
         </button>
         <button
-          onClick={handleSkip}
-          className="px-5 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold rounded-xl text-sm transition-colors border border-amber-200"
+          onClick={handleTakeBreak}
+          className="px-5 py-2.5 bg-mint-100 hover:bg-mint-200 text-mint-600 font-bold rounded-xl text-sm transition-colors border border-mint-200"
         >
-          Skip
-        </button>
-        <button
-          onClick={handleEndCycle}
-          className="px-5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl text-sm transition-colors"
-        >
-          End
+          {timer.phase?.type === "break" ? "Skip Break" : "Take Break"}
         </button>
       </div>
 
       {/* Future phases timeline */}
-      <PhaseTimeline timer={timer} todos={todos} />
+      <PhaseTimeline timer={timer} todos={todos} onRemoveFuture={handleRemoveFuture} />
+
+      {/* Inline block management */}
+      <div className="flex gap-2 justify-center flex-wrap">
+        <button onClick={() => handleAddBlock("work")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50 transition-colors">
+          + Work
+        </button>
+        <button onClick={() => handleAddBlock("short-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
+          + Break
+        </button>
+        <button onClick={() => handleAddBlock("long-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
+          + Long Break
+        </button>
+      </div>
+
+      {/* Today's session log */}
+      <SessionLog sessions={sessions} />
+
+      {/* Navigation */}
+      <div className="flex gap-2 justify-center pt-1">
+        <button onClick={onNavToStats} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+          Stats
+        </button>
+        <button onClick={onNavToLog} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+          Log
+        </button>
+        <button onClick={onNavToMenu} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+          Menu
+        </button>
+        <span className="text-stone-200 text-[10px]">|</span>
+        <button
+          onClick={handleEndCycle}
+          className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+        >
+          Finish
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Today's session log on timer view ── */
+function SessionLog({ sessions }: { sessions: PomoSession[] }) {
+  const today = getLocalDate();
+  const todaySessions = sessions.filter((s) => s.date === today && s.topic !== "Break");
+
+  // Also count break time
+  const breakMinutes = sessions
+    .filter((s) => s.date === today && s.topic === "Break")
+    .reduce((sum, s) => sum + s.minutes, 0);
+
+  if (todaySessions.length === 0 && breakMinutes === 0) return null;
+
+  // Group work sessions by topic
+  const groups: Record<string, number> = {};
+  for (const s of todaySessions) {
+    const topic = s.topic || "Work";
+    groups[topic] = (groups[topic] || 0) + s.minutes;
+  }
+
+  const formatMins = (m: number) => {
+    const h = Math.floor(m / 60);
+    const mins = m % 60;
+    if (h > 0) return `${h}h ${mins > 0 ? `${mins}m` : ""}`.trim();
+    return `${mins}m`;
+  };
+
+  const entries = [
+    ...Object.entries(groups).map(([topic, mins]) => `${topic}: ${formatMins(mins)}`),
+    ...(breakMinutes > 0 ? [`Break: ${formatMins(breakMinutes)}`] : []),
+  ];
+
+  return (
+    <div className="text-center">
+      <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Today</p>
+      {todaySessions.length === 0 && breakMinutes === 0 ? (
+        <p className="text-[9px] text-stone-300 italic">first session coming up!</p>
+      ) : (
+        <p className="text-[10px] text-stone-500 font-medium leading-relaxed">
+          {entries.join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
@@ -839,11 +925,12 @@ function TimerView({
 function PhaseTimeline({
   timer,
   todos,
+  onRemoveFuture,
 }: {
   timer: ReturnType<typeof getTimerInstance>;
   todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  onRemoveFuture: (idx: number) => void;
 }) {
-  const [, forceRender] = useState(0);
   const dragRef = useRef<{
     type: "resize-right" | "resize-left" | "reorder";
     phaseIdx: number;
@@ -859,33 +946,24 @@ function PhaseTimeline({
   const future = t.cyclePhases.slice(t.currentPhaseIndex + 1);
   if (future.length === 0) return null;
 
-  const totalDuration = future.reduce((s, p) => s + p.duration, 0);
   const PX_PER_MIN = 8;
-  const totalPx = totalDuration * PX_PER_MIN;
 
   const phases = future.map((phase, relativeIdx) => {
     const prevDurations = future.slice(0, relativeIdx).reduce((s, p) => s + p.duration, 0);
-    const startPx = prevDurations * PX_PER_MIN;
-    const widthPx = phase.duration * PX_PER_MIN;
     const idx = t.currentPhaseIndex + 1 + relativeIdx;
-    // compute end time for each block, based on when the current phase ends
     const baseMs = t.endTime?.getTime() ?? new Date().getTime();
     const blockEndMs = baseMs + (prevDurations + phase.duration) * 60 * 1000;
-    return { phase, idx, relativeIdx, startPx, widthPx, endTime: new Date(blockEndMs) };
+    return { phase, idx, relativeIdx, endTime: new Date(blockEndMs) };
   });
 
-  // --- drag handlers ---
   function handleMouseMove(e: MouseEvent) {
     const drag = dragRef.current;
     if (!drag) return;
-
     if (drag.type === "resize-right" || drag.type === "resize-left") {
       const deltaPx = e.clientX - drag.startX;
       const deltaMin = Math.round(deltaPx / PX_PER_MIN);
       const sign = drag.type === "resize-left" ? -1 : 1;
-      const newDuration = Math.max(1, drag.startDuration + deltaMin * sign);
-      t.updatePhaseDuration(drag.phaseIdx, newDuration);
-      forceRender((n) => n + 1);
+      t.updatePhaseDuration(drag.phaseIdx, Math.max(1, drag.startDuration + deltaMin * sign));
     } else if (drag.type === "reorder") {
       const deltaPx = e.clientX - drag.startX;
       const movedSlots = Math.round(deltaPx / 80);
@@ -907,7 +985,6 @@ function PhaseTimeline({
       const fromIdx = t.currentPhaseIndex + 1 + drag.startOrderIdx;
       const toIdx = t.currentPhaseIndex + 1 + overIdx;
       t.swapFuturePhases(fromIdx, toIdx);
-      forceRender((n) => n + 1);
     }
     dragRef.current = null;
     dragOverIdxRef.current = null;
@@ -925,88 +1002,83 @@ function PhaseTimeline({
     e.preventDefault();
     e.stopPropagation();
     const phase = future[relativeIdx];
-    dragRef.current = {
-      type,
-      phaseIdx,
-      startX: e.clientX,
-      startDuration: phase.duration,
-      startOrderIdx: relativeIdx,
-    };
+    dragRef.current = { type, phaseIdx, startX: e.clientX, startDuration: phase.duration, startOrderIdx: relativeIdx };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
   };
 
   return (
-    <div className="pt-3">
+    <div>
+      {/* Current phase */}
+      {t.phase && (
+        <div className="flex items-center justify-center gap-2 mb-2 text-[10px]">
+          <span className={`font-bold uppercase tracking-wider ${t.phase.type === "work" ? "text-rose-500" : "text-mint-500"}`}>
+            {t.phase.type === "work" ? "Now" : "Now"}
+          </span>
+          <span className="font-bold text-stone-500">
+            {t.phase.label} — {t.phase.duration}m
+          </span>
+          {t.phase.taskName && (
+            <span className="text-rose-400 truncate max-w-[120px]">{t.phase.taskName}</span>
+          )}
+        </div>
+      )}
       <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2 text-center">
-        Upcoming
+        Upcoming{future.length === 0 ? " — nothing scheduled" : ""}
       </p>
-
-      {/* Bars */}
-      <div
-        className="relative h-14 mx-auto bg-cream-100 rounded-xl overflow-hidden border border-cream-200"
-        style={{ width: Math.max(totalPx, 200) }}
-      >
-        {phases.map(({ phase, idx, relativeIdx, startPx, widthPx }) => {
+      <div className="flex gap-2 flex-wrap justify-center">
+        {phases.map(({ phase, idx, relativeIdx, endTime }) => {
           const isWork = phase.type === "work";
-          const bg = isWork
-            ? "bg-rose-300/50 hover:bg-rose-300/60"
-            : "bg-mint-300/50 hover:bg-mint-300/60";
+          const bg = isWork ? "bg-rose-50 border-rose-200" : "bg-mint-50 border-mint-200";
+          const textColor = isWork ? "text-rose-500" : "text-mint-500";
           const isDragging = dragOverIdx === relativeIdx;
 
           return (
             <div
               key={idx}
-              className={`absolute top-1.5 h-11 rounded-lg border text-center flex flex-col items-center justify-center cursor-grab active:cursor-grabbing transition-[width,left] select-none ${
+              className={`relative rounded-lg border px-3 py-2 flex flex-col items-center min-w-[80px] cursor-grab active:cursor-grabbing select-none transition-colors ${bg} ${
                 isDragging ? "ring-2 ring-lavender-400 z-10" : ""
-              } ${bg} ${isWork ? "border-rose-200" : "border-mint-200"}`}
-              style={{ left: startPx + 2, width: Math.max(widthPx - 4, 20) }}
+              }`}
               onMouseDown={(e) => handleMouseDown(e, "reorder", idx, relativeIdx)}
             >
+              {/* Remove button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemoveFuture(idx); }}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-400 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] leading-none shadow-sm"
+              >
+                ×
+              </button>
+
+              {/* Resize handles */}
               <div
                 className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-l-lg"
                 onMouseDown={(e) => handleMouseDown(e, "resize-left", idx, relativeIdx)}
               />
-              <span className="text-[9px] font-bold leading-tight truncate max-w-full px-1">
-                {isWork ? `W${relativeIdx + 1}` : phase.label}
-              </span>
-              {phase.taskName && isWork && (
-                <span className="text-[8px] text-rose-500 truncate max-w-full px-1 leading-tight">
-                  {phase.taskName}
-                </span>
-              )}
-              {!phase.taskName && isWork && (
-                <span className="text-[8px] text-stone-300 italic truncate max-w-full px-1 leading-tight">
-                  no task
-                </span>
-              )}
-              <span className="text-[8px] text-stone-400">{phase.duration}m</span>
               <div
                 className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-r-lg"
                 onMouseDown={(e) => handleMouseDown(e, "resize-right", idx, relativeIdx)}
               />
+
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor}`}>
+                {isWork ? `W${relativeIdx + 1}` : phase.label}
+              </span>
+              <span className="text-[11px] font-bold text-stone-500">
+                {phase.duration}m
+              </span>
+              {phase.taskName && isWork && (
+                <span className="text-[9px] text-rose-400 truncate max-w-[80px] leading-tight">
+                  {phase.taskName}
+                </span>
+              )}
+              <span className="text-[9px] text-stone-400 mt-0.5">
+                {formatTime(endTime)}
+              </span>
             </div>
           );
         })}
       </div>
 
-      {/* Time marker under each block */}
-      <div
-        className="flex mx-auto mt-1"
-        style={{ width: Math.max(totalPx, 200) }}
-      >
-        {phases.map((p, i) => (
-          <div
-            key={i}
-            className="text-center text-[8px] text-stone-400"
-            style={{ width: p.widthPx, flexShrink: 0 }}
-          >
-            <span>{formatTime(p.endTime)}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Task assignment for work blocks */}
+      {/* Task assigners for work blocks */}
       <div className="flex gap-2 flex-wrap justify-center mt-2">
         {phases.filter(p => p.phase.type === "work").map(({ phase, idx, relativeIdx }) => (
           <div key={idx} className="flex items-center gap-1">
@@ -1021,7 +1093,6 @@ function PhaseTimeline({
                 } else {
                   t.updatePhaseTask(idx, "", "");
                 }
-                forceRender((n) => n + 1);
               }}
               className="text-[9px] px-1.5 py-0.5 border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300 max-w-[150px] text-stone-600 truncate"
             >
@@ -1040,9 +1111,7 @@ function PhaseTimeline({
                 }).map(([modName, items]) => (
                   <optgroup key={modName} label={modName}>
                     {items.map(td => (
-                      <option key={td._id} value={td._id}>
-                        {td.title}
-                      </option>
+                      <option key={td._id} value={td._id}>{td.title}</option>
                     ))}
                   </optgroup>
                 ));
@@ -1607,6 +1676,26 @@ function SummaryView({
       <button onClick={onBack} className="w-full py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
         Back
       </button>
+    </div>
+  );
+}
+
+function SessionToast({ mins, topic }: { mins: number; topic: string }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisible(true);
+    const id = setTimeout(() => setVisible(false), 3000);
+    return () => clearTimeout(id);
+  }, [mins, topic]);
+
+  if (!visible) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] pointer-events-none animate-bounce">
+      <div className="px-4 py-3 rounded-xl shadow-lg border text-sm font-bold bg-mint-50 border-mint-200 text-mint-600">
+        {mins}m of {topic} saved!
+      </div>
     </div>
   );
 }
