@@ -3,6 +3,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useGuest } from "../hooks/useGuestMode";
 import { getSplashSoundEnabled, toggleSplashSound } from "./pomo/SplashScreen";
+import { getTodayLocal } from "../lib/date";
 import type { Id } from "../../convex/_generated/dataModel";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -332,9 +333,12 @@ function IcsImportForm({ onDone }: { onDone: () => void }) {
     setError(null);
     setSuccessCount(null);
     try {
+      const timezone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const result = await importIcs({
         url: url.trim(),
         name: name.trim() || "My Timetable",
+        timezone,
       });
       setSuccessCount(result.count);
       setTimeout(onDone, 1500);
@@ -401,11 +405,11 @@ function ManualEventForm({ onDone }: { onDone: () => void }) {
   const [isRecurring, setIsRecurring] = useState(true);
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [recurrenceStart, setRecurrenceStart] = useState(
-    new Date().toISOString().split("T")[0]
+    getTodayLocal()
   );
   const [recurrenceEnd, setRecurrenceEnd] = useState("");
   const [specificDate, setSpecificDate] = useState(
-    new Date().toISOString().split("T")[0]
+    getTodayLocal()
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

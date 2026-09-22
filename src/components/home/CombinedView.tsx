@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { SchedulePanel } from "./SchedulePanel";
 import { TasksPanel } from "./TasksPanel";
 import { useGuest } from "../../hooks/useGuestMode";
+import { getTodayLocal } from "../../lib/date";
 
 function getTodayStr() {
-  return new Date().toISOString().split("T")[0];
+  return getTodayLocal();
 }
 
 export function CombinedView({

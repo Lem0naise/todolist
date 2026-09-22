@@ -4,6 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
+import { getTodayLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
 import { FilterBar } from "./FilterBar";
@@ -171,7 +172,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     pending = pending.filter((t) => t.highPriority);
   }
   if (filter.onlyToday) {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayLocal();
     pending = pending.filter((t) => t.dueDate === today);
   }
 

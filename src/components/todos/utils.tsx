@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { getTodayLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 export type Category = "project" | "lecture_catchup" | "other";
@@ -76,9 +77,11 @@ export function formatDue(dateStr: string): {
   overdue: boolean;
   today: boolean;
 } {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayLocal();
   const diff = Math.floor(
-    (new Date(dateStr).getTime() - new Date(today).getTime()) / 86400000,
+    (new Date(dateStr + "T12:00:00").getTime() -
+      new Date(today + "T12:00:00").getTime()) /
+      86400000,
   );
   const shortDate = formatShortDate(dateStr);
 

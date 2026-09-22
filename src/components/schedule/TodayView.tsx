@@ -7,6 +7,7 @@ import { TodoModal } from "../todos/TodoModal";
 import { WeekNav } from "./WeekNav";
 import { EventCard } from "./EventCard";
 import { DayColumn } from "./DayColumn";
+import { formatLocalYmd, getTodayLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -14,7 +15,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getTodayStr(): string {
-  return new Date().toISOString().split("T")[0];
+  return getTodayLocal();
 }
 
 function getDateInfo(dateStr: string) {
@@ -36,7 +37,7 @@ function getWeekDays(dateStr: string) {
   return Array.from({ length: 7 }, (_, i) => {
     const day = new Date(monday);
     day.setDate(monday.getDate() + i);
-    const ds = day.toISOString().split("T")[0];
+    const ds = formatLocalYmd(day);
     return {
       date: ds,
       dayOfWeek: day.getDay(),
@@ -49,7 +50,7 @@ function getWeekDays(dateStr: string) {
 function offsetDate(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return formatLocalYmd(d);
 }
 
 type LinkedTodo = {

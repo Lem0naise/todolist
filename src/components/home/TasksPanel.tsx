@@ -5,6 +5,7 @@ import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { TodoModal } from "../todos/TodoModal";
 import { PanelCard } from "./PanelCard";
+import { getTodayLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 type Todo = {
@@ -22,7 +23,7 @@ type Todo = {
 };
 
 function getTodayStr() {
-  return new Date().toISOString().split("T")[0];
+  return getTodayLocal();
 }
 
 function formatDueLabel(dateStr: string): {

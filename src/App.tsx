@@ -40,7 +40,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
   const processMissed = useMutation(api.occurrences.processMissedEvents);
   useEffect(() => {
     if (isGuest) return;
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getLocalDate();
     const key = `unitrack:processed:${todayStr}`;
     if (localStorage.getItem(key)) return;
     processMissed({ today: todayStr })
