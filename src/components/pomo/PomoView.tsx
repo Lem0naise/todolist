@@ -65,7 +65,7 @@ export function PomoView({
   const { isGuest } = useGuest();
   const authPomo = usePomoData();
   const guestPomo = useGuestPomoSessions(isGuest);
-  const { sessions, addSession } = isGuest ? guestPomo : authPomo;
+  const { sessions, addSession, removeSession, clearAll } = isGuest ? guestPomo : authPomo;
 
   const todosQuery = useQuery(api.todos.list, { includeCompleted: false });
   const todos: { _id: string; title: string; moduleName?: string; category?: string }[] =
@@ -185,6 +185,8 @@ export function PomoView({
         <SummaryView
           sessions={sessions}
           onBack={() => setView("menu")}
+          removeSession={removeSession}
+          clearAll={clearAll}
         />
       )}
 
@@ -1573,13 +1575,49 @@ function LogView({
 function SummaryView({
   sessions,
   onBack,
+  removeSession,
+  clearAll,
 }: {
   sessions: PomoSession[];
   onBack: () => void;
+  removeSession: (id: string) => void | Promise<unknown>;
+  clearAll: () => void | Promise<unknown>;
 }) {
   const stats = getStatistics(sessions);
   const totals = getTotalsByDate(sessions);
   const topicMap = useRef(new Map<string, string>());
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // A session is suspicious if it could only come from a corrupted timer
+  // (e.g. a 23h "work" session left running while the tab was suspended).
+  const isSuspicious = (s: PomoSession) => s.minutes > 480 || s.minutes <= 0;
+  const debugSessions = [...sessions].sort((a, b) => b.minutes - a.minutes);
+  const suspicious = debugSessions.filter(isSuspicious);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this session?")) return;
+    setBusyId(id);
+    try {
+      await removeSession(id);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeleteSuspicious = async () => {
+    if (suspicious.length === 0) return;
+    if (!confirm(`Delete ${suspicious.length} suspicious session(s)?`)) return;
+    for (const s of suspicious) {
+      await removeSession(s._id);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (sessions.length === 0) return;
+    if (!confirm(`Delete ALL ${sessions.length} sessions? This cannot be undone.`)) return;
+    await clearAll();
+  };
 
   let colorIdx = topicMap.current.size;
   const allTopics = new Set<string>();
@@ -1676,6 +1714,81 @@ function SummaryView({
       <button onClick={onBack} className="w-full py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
         Back
       </button>
+
+      {/* Hidden debug menu — delete corrupted sessions */}
+      <div className="pt-1">
+        <button
+          onClick={() => setDebugOpen((o) => !o)}
+          className="w-full text-center text-[10px] font-bold uppercase tracking-widest text-stone-200 hover:text-stone-400 transition-colors select-none"
+        >
+          debug
+        </button>
+
+        {debugOpen && (
+          <div className="mt-2 bg-white rounded-xl border border-stone-200 overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-stone-50 border-b border-stone-100">
+              <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
+                Sessions debug
+              </span>
+              <span className="text-[10px] font-bold text-stone-400">
+                {sessions.length} total
+              </span>
+            </div>
+
+            <div className="flex gap-2 px-3 py-2 border-b border-cream-100">
+              <button
+                onClick={handleDeleteSuspicious}
+                disabled={suspicious.length === 0}
+                className="flex-1 py-1.5 text-[10px] font-bold rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Delete suspicious ({suspicious.length})
+              </button>
+              <button
+                onClick={handleClearAll}
+                disabled={sessions.length === 0}
+                className="flex-1 py-1.5 text-[10px] font-bold rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Clear all
+              </button>
+            </div>
+
+            {debugSessions.length === 0 ? (
+              <p className="text-xs text-stone-400 text-center py-4">No sessions.</p>
+            ) : (
+              <div className="max-h-64 overflow-y-auto">
+                {debugSessions.map((s) => {
+                  const bad = isSuspicious(s);
+                  return (
+                    <div
+                      key={s._id}
+                      className={`flex items-center gap-2 px-3 py-2 border-b border-cream-50 text-xs ${bad ? "bg-rose-50/60" : ""}`}
+                    >
+                      <span className="w-16 flex-shrink-0 text-stone-400 font-bold">{s.date}</span>
+                      <span className="w-12 flex-shrink-0 text-stone-400">{s.time?.slice(0, 5)}</span>
+                      <span className="flex-1 min-w-0 truncate text-stone-600 font-medium">
+                        {s.topic || "Work"}
+                      </span>
+                      <span className={`w-14 flex-shrink-0 text-right font-bold ${bad ? "text-rose-500" : "text-stone-500"}`}>
+                        {formatDuration(s.minutes)}
+                      </span>
+                      <button
+                        onClick={() => handleDelete(s._id)}
+                        disabled={busyId === s._id}
+                        aria-label="Delete session"
+                        className="flex-shrink-0 text-stone-300 hover:text-rose-500 disabled:opacity-40 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
