@@ -98,6 +98,11 @@ export const getForDate = query({
             dueDate: todo.dueDate,
             highPriority: todo.highPriority,
             completed: todo.completed,
+            category: todo.category,
+            subTasks: todo.subTasks,
+            manualProgress: todo.manualProgress,
+            linkedEventId: todo.linkedEventId,
+            moduleId: todo.moduleId,
           };
         }
       }

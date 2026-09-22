@@ -14,6 +14,11 @@ type LinkedTodo = {
   dueDate?: string;
   highPriority: boolean;
   completed: boolean;
+  category?: "lecture_catchup" | "project" | "other";
+  subTasks?: { id: string; title: string; done: boolean }[];
+  manualProgress?: number;
+  linkedEventId?: Id<"timetableEvents">;
+  moduleId?: Id<"modules">;
 };
 
 type TodayEvent = {
