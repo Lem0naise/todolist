@@ -87,6 +87,16 @@ export function FilterBar({
         Module
       </button>
       <button
+        onClick={() => update({ groupBy: "date" })}
+        className={`px-2 py-1 rounded font-bold transition-colors ${
+          filter.groupBy === "date"
+            ? "bg-lavender-100 text-lavender-600"
+            : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+        }`}
+      >
+        Date
+      </button>
+      <button
         onClick={() => update({ groupBy: "none" })}
         className={`px-2 py-1 rounded font-bold transition-colors ${
           filter.groupBy === "none"

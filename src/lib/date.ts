@@ -14,3 +14,18 @@ export function formatLocalYmd(date: Date): string {
 export function getTodayLocal(): string {
   return formatLocalYmd(new Date());
 }
+
+export function addDaysLocal(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return formatLocalYmd(d);
+}
+
+// Monday-based start of the local week containing dateStr, as YYYY-MM-DD.
+export function startOfWeekLocal(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  const dow = d.getDay();
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  d.setDate(d.getDate() - daysFromMonday);
+  return formatLocalYmd(d);
+}

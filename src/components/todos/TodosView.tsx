@@ -4,7 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
-import { getTodayLocal } from "../../lib/date";
+import { addDaysLocal, getTodayLocal, startOfWeekLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
 import { FilterBar } from "./FilterBar";
@@ -358,6 +358,78 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     );
   };
 
+  const formatWeekLabel = (weekStart: string) =>
+    `Week of ${new Date(weekStart + "T12:00:00").toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+    })}`;
+
+  const dateGroups = (() => {
+    if (filter.groupBy !== "date") return [];
+    const today = getTodayLocal();
+    const thisMonday = startOfWeekLocal(today);
+    const nextMonday = addDaysLocal(thisMonday, 7);
+
+    const buckets = new Map<string, { label: string; order: number; items: Todo[] }>();
+
+    for (const item of sorted) {
+      let key: string;
+      let label: string;
+      let order: number;
+
+      if (!item.dueDate) {
+        key = "no-date";
+        label = "No date";
+        order = 100000;
+      } else if (item.dueDate < today) {
+        key = "overdue";
+        label = "Overdue";
+        order = -2;
+      } else if (item.dueDate === today) {
+        key = "today";
+        label = "Today";
+        order = -1;
+      } else if (item.dueDate === addDaysLocal(today, 1)) {
+        key = "tomorrow";
+        label = "Tomorrow";
+        order = 0;
+      } else {
+        const weekStart = startOfWeekLocal(item.dueDate);
+        if (weekStart === thisMonday) {
+          key = "this-week";
+          label = "This week";
+          order = 1;
+        } else if (weekStart === nextMonday) {
+          key = "next-week";
+          label = "Next week";
+          order = 2;
+        } else {
+          key = `week-${weekStart}`;
+          label = formatWeekLabel(weekStart);
+          const diffDays = Math.round(
+            (new Date(weekStart + "T12:00:00").getTime() -
+              new Date(thisMonday + "T12:00:00").getTime()) /
+              86400000,
+          );
+          order = 3 + diffDays;
+        }
+      }
+
+      if (!buckets.has(key)) buckets.set(key, { label, order, items: [] });
+      buckets.get(key)!.items.push(item);
+    }
+
+    return [...buckets.entries()]
+      .sort((a, b) => a[1].order - b[1].order)
+      .map(([key, bucket]) => ({
+        key,
+        label: bucket.label,
+        items: [...bucket.items].sort((x, y) =>
+          (x.dueDate ?? "9999-12-31").localeCompare(y.dueDate ?? "9999-12-31"),
+        ),
+      }));
+  })();
+
   const showKanban = filter.groupBy === "category" && categoryColumns.length >= 1;
 
   return (
@@ -450,6 +522,34 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                     </div>
                   );
                 })}
+            </div>
+          ) : filter.groupBy === "date" ? (
+            <div className="overflow-y-auto space-y-4">
+              {dateGroups.map((group) => (
+                <div
+                  key={group.key}
+                  className="space-y-1 pl-3"
+                  style={{ borderLeft: "3px solid #c4b5e3" }}
+                >
+                  <h4 className="text-sm font-bold text-lavender-500 font-hand text-2xl">
+                    {group.label}
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-lavender-100 rounded text-lavender-500 font-sans">
+                      {group.items.length}
+                    </span>
+                  </h4>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext items={group.items.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+                      {group.items.map((item) =>
+                        renderItem(item, effectiveCategory(item) === "lecture_catchup"),
+                      )}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="overflow-y-auto">

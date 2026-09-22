@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -68,6 +68,16 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
   const [linkedEventId, setLinkedEventId] = useState<string>(editTodo?.linkedEventId ?? "");
   const [moduleId, setModuleId] = useState<string>(editTodo?.moduleId ?? "");
   const [loading, setLoading] = useState(false);
+
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the description box as content is typed (capped at max height).
+  useEffect(() => {
+    const el = descriptionRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, [description]);
 
   const addSubTask = () => {
     const trimmed = newSubTask.trim();
@@ -208,11 +218,12 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
 
           <div>
             <textarea
+              ref={descriptionRef}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Notes, links, details..."
-              rows={2}
-              className="w-full px-3.5 py-2.5 text-sm bg-white border border-cream-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 text-stone-600 placeholder-stone-300 transition-all resize-none font-medium leading-relaxed"
+              rows={5}
+              className="w-full px-3.5 py-2.5 text-sm bg-white border border-cream-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 text-stone-600 placeholder-stone-300 transition-all resize-none font-medium leading-relaxed min-h-[110px] max-h-80 overflow-y-auto"
             />
           </div>
 

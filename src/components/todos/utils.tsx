@@ -159,7 +159,7 @@ export const DEFAULT_COLORS = [
 ];
 
 export type SortMode = "manual" | "dueDateAsc" | "dueDateDesc";
-export type GroupBy = "category" | "module" | "none";
+export type GroupBy = "category" | "module" | "date" | "none";
 
 export interface FilterState {
   sort: SortMode;
