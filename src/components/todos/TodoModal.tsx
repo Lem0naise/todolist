@@ -164,8 +164,8 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
         className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full sm:max-w-md bg-cream rounded-t-2xl sm:rounded-3xl p-5 shadow-xl border border-cream-200">
-        <div className="flex items-center justify-between mb-4">
+      <div className="relative z-10 w-full sm:max-w-md bg-cream rounded-t-2xl sm:rounded-3xl shadow-xl border border-cream-200 flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-100 flex-shrink-0">
           <h3 className="text-lg font-bold text-stone-700 font-hand text-2xl">
             {editTodo ? "edit task" : "new task"}
           </h3>
@@ -177,7 +177,8 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3.5">
           <div>
             <input
               autoFocus
@@ -356,7 +357,9 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-3 gap-3">
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-3 border-t border-cream-100 flex-shrink-0 bg-cream gap-3">
             <button
               type="button"
               onClick={() => setHighPriority(!highPriority)}

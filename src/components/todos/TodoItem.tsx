@@ -87,12 +87,23 @@ export function TodoItem({
           ? "bg-lavender-50/30 border-lavender-100/60"
           : "bg-white border-stone-200/60 hover:border-stone-300/80";
 
+  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!hasDetails) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select, [data-no-expand]")) return;
+    onToggleExpand();
+  };
+
   return (
-    <div className={`rounded-lg border px-3 py-2 transition-all text-sm ${rowBg}`}>
+    <div
+      onClick={handleCardClick}
+      className={`rounded-lg border px-3 py-2 transition-all text-sm ${rowBg} ${hasDetails ? "cursor-pointer" : ""}`}
+    >
       <div className="flex items-start gap-2">
         {!todo.completed && !isCatchup && (
           <div
             {...dragHandleProps}
+            data-no-expand
             className="mt-0.5 cursor-grab active:cursor-grabbing text-stone-300 hover:text-stone-500 p-0.5 -ml-1"
           >
             <GripIcon />
