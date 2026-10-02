@@ -5,7 +5,7 @@ let instance: PomoTimer | null = null;
 
 export let lastCompletedInfo: { mins: number; topic: string } = { mins: 0, topic: "" };
 
-const PERSIST_KEY = "unitrack:pomo:timer";
+export const PERSIST_KEY = "unitrack:pomo:timer";
 
 interface PersistedTimer {
   mode: "timer" | "stopwatch";
@@ -20,10 +20,28 @@ interface PersistedTimer {
   currentPhaseIndex?: number;
   phaseEndTime?: number;
   phaseDuration?: number;
+  splashUntil?: number;
+  splashLabel?: string;
+}
+
+/**
+ * Listen for timer state written by other tabs. Fires only in tabs other than
+ * the one that wrote the change (per the StorageEvent spec). Passes the new raw
+ * value, or null when the timer was removed (ended/cleared elsewhere).
+ */
+export function subscribeToTimerChanges(
+  handler: (raw: string | null) => void,
+): () => void {
+  const listener = (e: StorageEvent) => {
+    if (e.key !== PERSIST_KEY) return;
+    handler(e.newValue);
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
 }
 
 export function persist() {
-  if (!instance || !instance.isRunning) {
+  if (!instance || (!instance.isRunning && !instance.isInSplash())) {
     localStorage.removeItem(PERSIST_KEY);
     return;
   }
@@ -36,6 +54,8 @@ export function persist() {
     isPaused: instance.isPaused,
     pausedTime: instance.pausedTime?.getTime() ?? null,
     totalWorkMinutes: instance.totalWorkMinutes,
+    splashUntil: instance.splashUntil?.getTime() ?? undefined,
+    splashLabel: instance.splashLabel || undefined,
   };
   if (instance.mode === "timer") {
     data.blocks = (instance.cyclePhases as { type: string; duration: number; label: string; taskTopic?: string; taskName?: string }[]).map((p, i) => ({
@@ -84,6 +104,11 @@ export function restoreTimer(): PomoTimer | null {
     timer.isPaused = data.isPaused;
     if (data.isPaused && data.pausedTime) {
       timer.pausedTime = new Date(data.pausedTime);
+    }
+    if (data.splashUntil) {
+      timer.splashUntil = new Date(data.splashUntil);
+      timer.splashLabel = data.splashLabel ?? "";
+      timer.isRunning = false;
     }
 
     instance = timer;

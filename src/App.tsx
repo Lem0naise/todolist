@@ -12,7 +12,8 @@ import { PomoView } from "./components/pomo/PomoView";
 import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { SplashScreen } from "./components/pomo/SplashScreen";
-import { getTimerInstance, stopTimer, persist, restoreTimer, notifySessionSaved } from "./components/pomo/timerState";
+import { getTimerInstance, stopTimer, persist, restoreTimer, clearTimer, subscribeToTimerChanges, notifySessionSaved } from "./components/pomo/timerState";
+import { initTimerLeadership, isTimerOwner } from "./components/pomo/timerLeader";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
 import { GuestContext } from "./hooks/useGuestMode";
@@ -35,6 +36,23 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
   // Restore persisted timer on mount
   useEffect(() => {
     restoreTimer();
+  }, []);
+
+  // Elect a single owner tab to drive automatic completion / session saves
+  useEffect(() => {
+    initTimerLeadership(() => setPomoTick((t) => t + 1));
+  }, []);
+
+  // Keep in sync with timer changes made in other tabs
+  useEffect(() => {
+    return subscribeToTimerChanges((raw) => {
+      if (raw === null) {
+        clearTimer();
+      } else {
+        restoreTimer();
+      }
+      setPomoTick((t) => t + 1);
+    });
   }, []);
 
   const processMissed = useMutation(api.occurrences.processMissedEvents);
@@ -66,9 +84,9 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
       const timer = getTimerInstance();
       if (!timer || !timer.isRunning) return;
 
-      persist();
-
-      if (timer.isComplete()) {
+      // Only the owner tab performs automatic completion + session saves, so
+      // two tabs sharing the same timer can't double-save.
+      if (isTimerOwner() && timer.isComplete()) {
         if (timer.phase?.type === "work") {
           const d = new Date();
           const topic = timer.topic || timer.taskName || "Work";
@@ -82,6 +100,8 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           notifySessionSaved(timer.duration, topic);
         }
         timer.enterSplash();
+        // Persist the splash so other tabs (and a reload) stay in sync
+        persist();
       }
 
       setPomoTick((t) => t + 1);
@@ -174,9 +194,14 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
 
         {timer?.isInSplash() && (
           <SplashScreen onSkip={() => {
-            if (!timer.exitSplash()) {
+            // Followers only render the splash; the owner drives the advance.
+            if (!isTimerOwner()) return;
+            if (timer.exitSplash()) {
+              persist();
+            } else {
               stopTimer();
             }
+            setPomoTick((t) => t + 1);
           }} />
         )}
       </div>

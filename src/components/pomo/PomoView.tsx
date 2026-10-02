@@ -1328,6 +1328,7 @@ function StopwatchView({
 
   const handleResumeWork = () => {
     timer.stop(); // discard break time
+    persist(); // clear the running record while choosing the next task
     setSelectingTask(true);
   };
 

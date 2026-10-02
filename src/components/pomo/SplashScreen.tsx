@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { getTimerInstance } from "./timerState";
+import { isTimerOwner } from "./timerLeader";
 
 let splashSoundEnabled = true;
 try {
@@ -57,7 +58,10 @@ function playChime(descending = false) {
 
 export function SplashScreen({ onSkip }: { onSkip: () => void }) {
   const timer = getTimerInstance();
-  const [countdown, setCountdown] = useState(10);
+  const [countdown, setCountdown] = useState(() => {
+    if (!timer?.splashUntil) return 10;
+    return Math.max(0, Math.ceil((timer.splashUntil.getTime() - Date.now()) / 1000));
+  });
   const soundPlayed = useRef(false);
   const onSkipRef = useRef(onSkip);
   onSkipRef.current = onSkip;
@@ -65,12 +69,18 @@ export function SplashScreen({ onSkip }: { onSkip: () => void }) {
   useEffect(() => {
     if (!soundPlayed.current) {
       soundPlayed.current = true;
-      const isBreak = timer?.splashLabel === "BREAK TIME";
-      playChime(!isBreak); // ascending for break, descending for work
+      // Only the owner drives the splash, so only it makes the noise.
+      if (isTimerOwner()) {
+        const isBreak = timer?.splashLabel === "BREAK TIME";
+        playChime(!isBreak); // ascending for break, descending for work
+      }
     }
+    const remainingMs = timer?.splashUntil
+      ? Math.max(0, timer.splashUntil.getTime() - Date.now())
+      : 10000;
     const timeout = setTimeout(() => {
       onSkipRef.current();
-    }, 10000);
+    }, remainingMs);
 
     const id = setInterval(() => {
       setCountdown((c) => (c <= 1 ? 0 : c - 1));
