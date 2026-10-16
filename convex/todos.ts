@@ -317,6 +317,7 @@ export const bulkUpdate = mutation({
         highPriority: v.optional(v.boolean()),
         category: CLEARABLE_CATEGORY,
         snoozedUntil: CLEARABLE_STRING,
+        focusDate: CLEARABLE_STRING,
       }),
     ),
   },
@@ -331,6 +332,10 @@ export const bulkUpdate = mutation({
       if (u.highPriority !== undefined) patch.highPriority = u.highPriority;
       if (u.category !== undefined) patch.category = u.category ?? undefined;
       if (u.snoozedUntil !== undefined) patch.snoozedUntil = u.snoozedUntil ?? undefined;
+      if (u.focusDate !== undefined) {
+        patch.focusDate = u.focusDate ?? undefined;
+        if (u.focusDate === null) patch.focusOrder = undefined;
+      }
       if (Object.keys(patch).length > 0) await ctx.db.patch(u.id, patch);
     }
   },

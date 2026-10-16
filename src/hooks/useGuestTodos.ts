@@ -30,6 +30,7 @@ export interface BulkEdit {
   highPriority?: boolean;
   category?: Category | null;
   snoozedUntil?: string | null;
+  focusDate?: string | null;
 }
 
 function loadTodos(): GuestTodo[] {
@@ -178,6 +179,10 @@ export function useGuestTodos(active: boolean) {
         if (edit.highPriority !== undefined) patch.highPriority = edit.highPriority;
         if (edit.category !== undefined) patch.category = edit.category ?? undefined;
         if (edit.snoozedUntil !== undefined) patch.snoozedUntil = edit.snoozedUntil ?? undefined;
+        if (edit.focusDate !== undefined) {
+          patch.focusDate = edit.focusDate ?? undefined;
+          if (edit.focusDate === null) patch.focusOrder = undefined;
+        }
         return { ...t, ...patch };
       });
       saveTodos(next);

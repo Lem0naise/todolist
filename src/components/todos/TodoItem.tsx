@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   formatDue,
   formatShortDate,
@@ -10,6 +10,7 @@ import {
   type Todo,
 } from "./utils";
 import { addDaysLocal, getTodayLocal } from "../../lib/date";
+import { PlayIcon, SunIcon } from "../icons";
 
 function CaretIcon() {
   return (
@@ -51,27 +52,6 @@ function TrashIcon() {
   );
 }
 
-function SunIcon({ filled }: { filled?: boolean }) {
-  return filled ? (
-    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2a1 1 0 011 1v2a1 1 0 11-2 0V3a1 1 0 011-1zm0 15a5 5 0 110-10 5 5 0 010 10zM11 20a1 1 0 112 0v1a1 1 0 11-2 0v-1zM3 11a1 1 0 110 2H2a1 1 0 110-2h1zm19 0a1 1 0 110 2h-1a1 1 0 110-2h1zM5.636 4.222a1 1 0 011.414 0l.707.707A1 1 0 016.343 6.343l-.707-.707a1 1 0 010-1.414zm12.021 12.021a1 1 0 011.414 0l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 010-1.414zM18.95 5.636a1 1 0 010-1.414 1 1 0 011.414 0l.707.707a1 1 0 01-1.414 1.414l-.707-.707zM6.343 17.657a1 1 0 010 1.414l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 0z" />
-    </svg>
-  ) : (
-    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <circle cx="12" cy="12" r="5" />
-      <path strokeLinecap="round" d="M12 2v2m0 16v2M4.2 4.2l1.4 1.4m12.8 12.8l1.4 1.4M2 12h2m16 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
 function ClockIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -106,7 +86,6 @@ export function TodoItem({
   onToggleDone: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
   dragHandleProps?: Record<string, unknown>;
@@ -121,6 +100,7 @@ export function TodoItem({
 }) {
   const [showSnooze, setShowSnooze] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const completeTimer = useRef<number | null>(null);
   const today = getTodayLocal();
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
   const hasDetails = !!todo.description;
@@ -139,6 +119,21 @@ export function TodoItem({
           ? "bg-lavender-50/30 border-lavender-100/60"
           : "bg-white border-stone-200/60 hover:border-stone-300/80";
 
+  // Drop the pending completion if the row unmounts mid-animation
+  useEffect(
+    () => () => {
+      if (completeTimer.current !== null) window.clearTimeout(completeTimer.current);
+    },
+    [],
+  );
+
+  // Safety net: never leave the box stuck "completing" if a mutation fails
+  useEffect(() => {
+    if (!completing) return;
+    const t = window.setTimeout(() => setCompleting(false), 2500);
+    return () => window.clearTimeout(t);
+  }, [completing]);
+
   const handleDoneClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (todo.completed || completing) {
@@ -147,7 +142,10 @@ export function TodoItem({
     }
     // Let the tick animation play before the row leaves the list.
     setCompleting(true);
-    window.setTimeout(() => onToggleDone(), 380);
+    completeTimer.current = window.setTimeout(() => {
+      completeTimer.current = null;
+      onToggleDone();
+    }, 380);
   };
 
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {

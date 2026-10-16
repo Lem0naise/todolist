@@ -189,10 +189,8 @@ export function pickNextAction(todos: Todo[], today: string): Todo | null {
     }
     if (t.highPriority) s += 30;
     if (t.category === "lecture_catchup") s += 10;
-    if (t.category === "project") {
-      const progress = computeProgress(t);
-      if (progress !== null && progress > 0 && progress < 100) s += 15;
-    }
+    const progress = computeProgress(t);
+    if (progress !== null && progress > 0 && progress < 100) s += 15;
     return s;
   };
 

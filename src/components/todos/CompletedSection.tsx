@@ -22,7 +22,6 @@ export function CompletedSection({
   onToggleDone,
   onEdit,
   onDelete,
-  onNavigateToDate,
   onSubTaskToggle,
   onProgressChange,
 }: {
@@ -34,7 +33,6 @@ export function CompletedSection({
   onToggleDone: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
   onDelete: (todo: Todo) => void;
-  onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (todo: Todo, stId: string) => void;
   onProgressChange: (todo: Todo, val: number) => void;
 }) {
@@ -60,7 +58,6 @@ export function CompletedSection({
               onToggleDone={() => onToggleDone(todo)}
               onEdit={() => onEdit(todo)}
               onDelete={() => onDelete(todo)}
-              onNavigateToDate={onNavigateToDate}
               onSubTaskToggle={(stId) => onSubTaskToggle(todo, stId)}
               onProgressChange={(val) => onProgressChange(todo, val)}
               isCatchup={effectiveCategory(todo) === "lecture_catchup"}

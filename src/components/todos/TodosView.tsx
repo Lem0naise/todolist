@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
-import { useGuestTodos } from "../../hooks/useGuestTodos";
+import { useGuestTodos, type BulkEdit } from "../../hooks/useGuestTodos";
 import { addDaysLocal, getTodayLocal, startOfWeekLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
@@ -25,6 +25,7 @@ import {
 import type { StartableTask } from "../pomo/startForTask";
 import { ToastStack } from "../Toast";
 import { useToast } from "../../hooks/useToast";
+import { SunIcon } from "../icons";
 
 import {
   DndContext,
@@ -53,20 +54,9 @@ function CaretIcon({ open }: { open: boolean }) {
   );
 }
 
-function SunIcon() {
-  return (
-    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <circle cx="12" cy="12" r="4" />
-      <path strokeLinecap="round" d="M12 2v2m0 16v2M4.2 4.2l1.4 1.4m12.8 12.8l1.4 1.4M2 12h2m16 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-    </svg>
-  );
-}
-
 export function TodosView({
-  onNavigateToDate,
   onStartPomo,
 }: {
-  onNavigateToDate?: (date: string) => void;
   onStartPomo?: (task: StartableTask) => void;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -184,26 +174,12 @@ export function TodosView({
     }
   };
 
-  const handleBulkUpdate = (
-    edits: {
-      id: string;
-      dueDate?: string | null;
-      highPriority?: boolean;
-      category?: Category | null;
-      snoozedUntil?: string | null;
-    }[],
-  ) => {
+  const handleBulkUpdate = (edits: BulkEdit[]) => {
     if (isGuest) {
       guestTodoData.bulkUpdate(edits);
     } else {
       bulkUpdateMutation({
-        updates: edits as {
-          id: Id<"todos">;
-          dueDate?: string | null;
-          highPriority?: boolean;
-          category?: Category | null;
-          snoozedUntil?: string | null;
-        }[],
+        updates: edits as (Omit<BulkEdit, "id"> & { id: Id<"todos"> })[],
       });
     }
   };
@@ -277,16 +253,12 @@ export function TodosView({
   const selectAll = (ids: string[]) => setSelected(new Set(ids));
 
   const clearMyDay = () => {
-    for (const t of myDay) handleSetFocus(t._id, undefined);
+    if (myDay.length === 0) return;
+    handleBulkUpdate(myDay.map((t) => ({ id: t._id, focusDate: null })));
   };
 
   const selectedIds = [...selected];
-  const applyToSelected = (fields: {
-    dueDate?: string | null;
-    highPriority?: boolean;
-    category?: Category | null;
-    snoozedUntil?: string | null;
-  }) => {
+  const applyToSelected = (fields: Omit<BulkEdit, "id">) => {
     handleBulkUpdate(selectedIds.map((id) => ({ id, ...fields })));
   };
   const deleteSelected = () => {
@@ -301,6 +273,8 @@ export function TodosView({
     (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
   );
 
+  const today = getTodayLocal();
+
   if (filter.moduleFilter !== "all") {
     pending = pending.filter((t) => t.moduleId === filter.moduleFilter);
   }
@@ -308,7 +282,6 @@ export function TodosView({
     pending = pending.filter((t) => t.highPriority);
   }
   if (filter.onlyToday) {
-    const today = getTodayLocal();
     pending = pending.filter((t) => t.dueDate === today);
   }
 
@@ -324,7 +297,6 @@ export function TodosView({
 
   const sorted = sortItems(pending);
 
-  const today = getTodayLocal();
   const pendingAll = todos?.filter((t) => !t.completed) ?? [];
   const myDay = pendingAll
     .filter((t) => isFocusToday(t, today))
@@ -388,7 +360,6 @@ export function TodosView({
         onToggleDone={() => handleToggleDone(item)}
         onEdit={() => { setEditTodo(item); setShowModal(true); }}
         onDelete={() => handleDelete(item)}
-        onNavigateToDate={onNavigateToDate}
         onSubTaskToggle={(stId) => handleSubTaskToggle(item, stId)}
         onProgressChange={(val) => handleProgressChange(item, val)}
         isCatchup={isCatchup}
@@ -676,7 +647,7 @@ export function TodosView({
             <section className="mb-4">
               <div className="rounded-2xl border border-amber-200 bg-amber-50/40 overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-100 flex-shrink-0">
-                  <SunIcon />
+                  <SunIcon className="w-4 h-4 text-amber-500" />
                   <h3 className="font-hand text-2xl text-amber-700">my day</h3>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold font-sans bg-amber-100 text-amber-700">
                     {myDay.length}
@@ -714,16 +685,25 @@ export function TodosView({
 
           {backlogSorted.length > 0 && (
             <div>
-              <button
-                onClick={() => setBacklogOpen((o) => !o)}
-                className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 transition-colors"
-              >
-                <CaretIcon open={showBacklog} />
-                All tasks
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
-                  {backlogSorted.length}
-                </span>
-              </button>
+              {myDay.length > 0 ? (
+                <button
+                  onClick={() => setBacklogOpen((o) => !o)}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  <CaretIcon open={showBacklog} />
+                  All tasks
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                    {backlogSorted.length}
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
+                  All tasks
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                    {backlogSorted.length}
+                  </span>
+                </div>
+              )}
               <div className={showBacklog ? "mt-3" : "hidden"}>
           {showKanban ? (
             <div className="min-h-[50vh] grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -824,7 +804,6 @@ export function TodosView({
               onToggleDone={handleToggleDone}
               onEdit={(t) => { setEditTodo(t); setShowModal(true); }}
               onDelete={handleDelete}
-              onNavigateToDate={onNavigateToDate}
               onSubTaskToggle={handleSubTaskToggle}
               onProgressChange={handleProgressChange}
             />

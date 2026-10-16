@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
 import { PanelCard } from "./PanelCard";
+import { TodoModal } from "../todos/TodoModal";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { StartableTask } from "../pomo/startForTask";
 import { ToastStack } from "../Toast";
 import { useToast } from "../../hooks/useToast";
+import { PlayIcon, SunIcon } from "../icons";
 import {
   computeProgress,
   effectiveCategory,
@@ -15,6 +18,7 @@ import {
   isFocusToday,
   isSnoozed,
   pickNextAction,
+  type Category,
   type Todo,
 } from "../todos/utils";
 
@@ -25,27 +29,6 @@ function ListIcon() {
   return (
     <svg className="w-4 h-4 text-lavender-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
-function SunIcon({ filled }: { filled?: boolean }) {
-  return filled ? (
-    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2a1 1 0 011 1v2a1 1 0 11-2 0V3a1 1 0 011-1zm0 15a5 5 0 110-10 5 5 0 010 10zM3 11a1 1 0 110 2H2a1 1 0 110-2h1zm19 0a1 1 0 110 2h-1a1 1 0 110-2h1zM5.6 4.2a1 1 0 011.4 0l.7.7A1 1 0 016.3 6.3l-.7-.7a1 1 0 010-1.4zm12 12a1 1 0 011.4 0l.7.7a1 1 0 01-1.4 1.4l-.7-.7a1 1 0 010-1.4z" />
-    </svg>
-  ) : (
-    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <circle cx="12" cy="12" r="4" />
-      <path strokeLinecap="round" d="M12 3v2m0 14v2M5 5l1.4 1.4M17.6 17.6L19 19M4 12h2m12 0h2M5 19l1.4-1.4M17.6 6.4L19 5" />
     </svg>
   );
 }
@@ -73,6 +56,7 @@ export function TasksPanel({
   const completeTodo = useMutation(api.todos.complete);
   const setFocus = useMutation(api.todos.setFocus);
   const { toasts, push } = useToast();
+  const [showModal, setShowModal] = useState(false);
 
   const handleToggle = (id: string, completed: boolean) => {
     if (isGuest) {
@@ -141,7 +125,6 @@ export function TasksPanel({
   ].filter((g) => g.items.length > 0);
 
   return (
-    <>
     <PanelCard
       title="tasks"
       isFullHeight={true}
@@ -150,7 +133,7 @@ export function TasksPanel({
       action={{ label: "all tasks", onClick: onGoToTodos }}
       headerAction={
         <button
-          onClick={onGoToTodos}
+          onClick={() => setShowModal(true)}
           className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition-colors"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -253,9 +236,38 @@ export function TasksPanel({
           ))}
         </div>
       )}
+
+      <ToastStack toasts={toasts} />
+
+      {showModal && (
+        <TodoModal
+          onClose={() => setShowModal(false)}
+          isGuest={isGuest}
+          onGuestCreate={isGuest ? (data: Record<string, unknown>) => {
+            guestTodoData.create({
+              title: data.title as string,
+              description: data.description as string,
+              dueDate: data.dueDate as string,
+              highPriority: data.highPriority as boolean,
+              category: data.category as Category,
+              subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
+              manualProgress: data.manualProgress as number,
+            });
+          } : undefined}
+          onGuestUpdate={isGuest ? (id: string, data: Record<string, unknown>) => {
+            guestTodoData.update(id, {
+              title: data.title as string,
+              description: data.description as string,
+              dueDate: data.dueDate as string,
+              highPriority: data.highPriority as boolean,
+              category: data.category as Category,
+              subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
+              manualProgress: data.manualProgress as number,
+            });
+          } : undefined}
+        />
+      )}
     </PanelCard>
-    <ToastStack toasts={toasts} />
-    </>
   );
 }
 

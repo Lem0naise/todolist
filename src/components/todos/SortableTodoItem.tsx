@@ -10,7 +10,6 @@ export function SortableTodoItem(props: {
   onToggleDone: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
   isCatchup?: boolean;

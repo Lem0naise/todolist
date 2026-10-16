@@ -21,7 +21,6 @@ import { GuestContext } from "./hooks/useGuestMode";
 
 function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateToAuth: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
-  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
   const [pomoTick, setPomoTick] = useState(0);
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
@@ -73,13 +72,12 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
     await signOut();
   };
 
-  const handleNavigateToDate = (date: string) => {
-    setNavigateToDate(date);
-    setActiveTab("today");
-  };
-
   const handleStartPomo = (task: StartableTask) => {
-    startPomoForTask(task);
+    // Don't clobber an in-progress cycle — just surface it.
+    const timer = getTimerInstance();
+    if (!timer?.isRunning && !timer?.isInSplash()) {
+      startPomoForTask(task);
+    }
     setActiveTab("pomo");
     setPomoTick((t) => t + 1);
   };
@@ -177,16 +175,11 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           )}
         {activeTab === "today" && (
           <TodayView
-            key={navigateToDate ?? "today"}
             onGoToTodos={() => setActiveTab("todos")}
-            initialDate={navigateToDate}
           />
         )}
           {activeTab === "todos" && (
-            <TodosView
-              onNavigateToDate={handleNavigateToDate}
-              onStartPomo={handleStartPomo}
-            />
+            <TodosView onStartPomo={handleStartPomo} />
           )}
           {activeTab === "pomo" && (
             <PomoView pomoTick={pomoTick} />
