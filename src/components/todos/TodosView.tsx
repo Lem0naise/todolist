@@ -163,7 +163,9 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   };
 
   let pending = todos?.filter((t) => !t.completed) ?? [];
-  const done = todos?.filter((t) => t.completed) ?? [];
+  const done = (todos?.filter((t) => t.completed) ?? []).sort(
+    (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
+  );
 
   if (filter.moduleFilter !== "all") {
     pending = pending.filter((t) => t.moduleId === filter.moduleFilter);
