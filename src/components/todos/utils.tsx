@@ -24,6 +24,9 @@ export type Todo = {
   manualOrder?: number;
   moduleId?: Id<"modules">;
   moduleName?: string;
+  focusDate?: string;
+  focusOrder?: number;
+  snoozedUntil?: string;
 };
 
 export type Module = {
@@ -145,6 +148,53 @@ export function computeProgress(todo: Todo): number | null {
 
 export function effectiveCategory(todo: Todo): Category {
   return todo.category ?? "other";
+}
+
+export function isSnoozed(todo: Todo, today: string): boolean {
+  return !!todo.snoozedUntil && todo.snoozedUntil > today;
+}
+
+export function isFocusToday(todo: Todo, today: string): boolean {
+  return todo.focusDate === today;
+}
+
+export const SNOOZE_PRESETS: { label: string; days: number }[] = [
+  { label: "Tomorrow", days: 1 },
+  { label: "In 3 days", days: 3 },
+  { label: "Next week", days: 7 },
+];
+
+/**
+ * Choose the single task most worth doing now: overdue beats due-today beats
+ * soon, with priority, catch-up and stalled-project nudges. Snoozed tasks are
+ * ignored.
+ */
+export function pickNextAction(todos: Todo[], today: string): Todo | null {
+  const candidates = todos.filter((t) => !t.completed && !isSnoozed(t, today));
+  if (candidates.length === 0) return null;
+
+  const score = (t: Todo): number => {
+    let s = 0;
+    if (t.dueDate) {
+      if (t.dueDate < today) s += 100;
+      else if (t.dueDate === today) s += 70;
+      else {
+        const days = Math.round(
+          (new Date(t.dueDate + "T12:00:00").getTime() -
+            new Date(today + "T12:00:00").getTime()) /
+            86400000,
+        );
+        s += Math.max(0, 40 - days * 4);
+      }
+    }
+    if (t.highPriority) s += 30;
+    if (t.category === "lecture_catchup") s += 10;
+    const progress = computeProgress(t);
+    if (progress !== null && progress > 0 && progress < 100) s += 15;
+    return s;
+  };
+
+  return [...candidates].sort((a, b) => score(b) - score(a))[0] ?? null;
 }
 
 export const DEFAULT_COLORS = [

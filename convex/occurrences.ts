@@ -2,6 +2,28 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+function ordinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/**
+ * Catch-up todos are named after their module and the lecture date, e.g.
+ * "Web and Cloud Lecture 16th Oct". Falls back to the raw event title when the
+ * event has no module assigned.
+ */
+function catchupTitle(
+  moduleName: string | undefined,
+  date: string,
+  fallbackTitle: string,
+): string {
+  if (!moduleName) return fallbackTitle;
+  const d = new Date(date + "T12:00:00");
+  const month = d.toLocaleDateString("en-GB", { month: "short" });
+  return `${moduleName} Lecture ${ordinalSuffix(d.getDate())} ${month}`;
+}
+
 export const getForDate = query({
   args: { date: v.string() },
   handler: async (ctx, { date }) => {
@@ -96,13 +118,17 @@ export const convertToTodo = mutation({
       moduleId = event.moduleId;
     }
 
-    // Create todo — clean title, readable date in description
+    // Name after the module + date when possible, else the raw lecture title
+    const eventModule = event.moduleId ? await ctx.db.get(event.moduleId) : null;
+    const title = catchupTitle(eventModule?.name, date, event.title);
+
+    // Create todo — readable date in description
     const humanDate = new Date(date + "T12:00:00").toLocaleDateString("en-GB", {
       weekday: "short", day: "numeric", month: "short",
     });
     const todoId = await ctx.db.insert("todos", {
       userId,
-      title: event.title,
+      title,
       description: `Missed lecture · ${humanDate}${event.description ? `\n${event.description}` : ""}`,
       dueDate: dueDate ?? date,
       highPriority: highPriority ?? false,
@@ -147,6 +173,11 @@ export const processMissedEvents = mutation({
       // Skip ignored events
       if (ignoredSet.has(event.title.toLowerCase())) continue;
 
+      // Resolve module name once per event for predictable catch-up titles
+      const moduleName = event.moduleId
+        ? (await ctx.db.get(event.moduleId))?.name
+        : undefined;
+
       if (event.isRecurring && event.dayOfWeek !== undefined) {
         // Generate dates for the past 14 days where this event should have occurred
         for (let i = 1; i <= 14; i++) {
@@ -184,7 +215,7 @@ export const processMissedEvents = mutation({
               });
               const todoId = await ctx.db.insert("todos", {
                 userId,
-                title: `Missed: ${event.title}`,
+                title: catchupTitle(moduleName, dateStr, event.title),
                 description: event.description,
                 dueDate: today, // Due today (catch up)
                 highPriority: false,
@@ -203,7 +234,7 @@ export const processMissedEvents = mutation({
               });
               const todoId = await ctx.db.insert("todos", {
                 userId,
-                title: event.title,
+                title: catchupTitle(moduleName, dateStr, event.title),
                 description: `Missed lecture · ${humanDate2}`,
                 dueDate: today,
                 highPriority: false,

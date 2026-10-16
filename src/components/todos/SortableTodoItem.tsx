@@ -10,10 +10,16 @@ export function SortableTodoItem(props: {
   onToggleDone: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onNavigateToDate?: (date: string) => void;
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (val: number) => void;
   isCatchup?: boolean;
+  isFocus?: boolean;
+  onToggleFocus?: () => void;
+  onSnooze?: (until?: string) => void;
+  onStartPomo?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const {
     attributes,
@@ -24,7 +30,7 @@ export function SortableTodoItem(props: {
     isDragging,
   } = useSortable({
     id: props.todo._id,
-    disabled: props.todo.completed || props.isCatchup,
+    disabled: props.todo.completed || props.isCatchup || props.selectable,
   });
 
   const style = {

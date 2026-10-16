@@ -100,6 +100,11 @@ export default defineSchema({
     manualOrder: v.optional(v.number()),
     // Module assignment (auto from linked event, or manual override)
     moduleId: v.optional(v.id("modules")),
+    // "My Day" planning: date this task is committed to, plus order within it
+    focusDate: v.optional(v.string()),
+    focusOrder: v.optional(v.number()),
+    // Defer: hidden from urgency (My Day / overdue / next action) until this date
+    snoozedUntil: v.optional(v.string()),
   })
     .index("by_user", ["userId"])
     .index("by_user_completed", ["userId", "completed"]),

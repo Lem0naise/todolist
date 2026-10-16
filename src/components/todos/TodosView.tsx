@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
-import { useGuestTodos } from "../../hooks/useGuestTodos";
+import { useGuestTodos, type BulkEdit } from "../../hooks/useGuestTodos";
 import { addDaysLocal, getTodayLocal, startOfWeekLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
@@ -14,12 +14,18 @@ import {
   CATEGORY_ORDER,
   CATEGORY_META,
   DEFAULT_FILTER,
+  isFocusToday,
+  SNOOZE_PRESETS,
   type FilterState,
   type Todo,
   type Module,
   type Category,
   effectiveCategory,
 } from "./utils";
+import type { StartableTask } from "../pomo/startForTask";
+import { ToastStack } from "../Toast";
+import { useToast } from "../../hooks/useToast";
+import { SunIcon } from "../icons";
 
 import {
   DndContext,
@@ -48,11 +54,20 @@ function CaretIcon({ open }: { open: boolean }) {
   );
 }
 
-export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: string) => void }) {
+export function TodosView({
+  onStartPomo,
+}: {
+  onStartPomo?: (task: StartableTask) => void;
+}) {
   const [showModal, setShowModal] = useState(false);
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState("");
+  const { toasts, push } = useToast();
   const [filter, setFilter] = useState<FilterState>(() => {
     try {
       const saved = localStorage.getItem("unitrack:filter");
@@ -86,6 +101,11 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   const _updateSubTasks = useMutation(api.todos.updateSubTasks);
   const _updateProgress = useMutation(api.todos.updateProgress);
   const reorderMutation = useMutation(api.todos.reorder);
+  const setFocusMutation = useMutation(api.todos.setFocus);
+  const reorderFocusMutation = useMutation(api.todos.reorderFocus);
+  const snoozeMutation = useMutation(api.todos.snooze);
+  const bulkUpdateMutation = useMutation(api.todos.bulkUpdate);
+  const bulkRemoveMutation = useMutation(api.todos.bulkRemove);
 
   // Guest-compatible CRUD callbacks
   const handleComplete = (id: string, completed: boolean) => {
@@ -128,6 +148,50 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     }
   };
 
+  const handleSetFocus = (id: string, focusDate?: string) => {
+    if (isGuest) {
+      guestTodoData.setFocus(id, focusDate);
+    } else {
+      setFocusMutation({ id: id as Id<"todos">, focusDate });
+    }
+  };
+
+  const handleReorderFocus = (updates: { id: string; focusOrder: number }[]) => {
+    if (isGuest) {
+      guestTodoData.reorderFocus(updates);
+    } else {
+      reorderFocusMutation({
+        updates: updates as { id: Id<"todos">; focusOrder: number }[],
+      });
+    }
+  };
+
+  const handleSnooze = (id: string, until?: string) => {
+    if (isGuest) {
+      guestTodoData.snooze(id, until);
+    } else {
+      snoozeMutation({ id: id as Id<"todos">, until });
+    }
+  };
+
+  const handleBulkUpdate = (edits: BulkEdit[]) => {
+    if (isGuest) {
+      guestTodoData.bulkUpdate(edits);
+    } else {
+      bulkUpdateMutation({
+        updates: edits as (Omit<BulkEdit, "id"> & { id: Id<"todos"> })[],
+      });
+    }
+  };
+
+  const handleBulkRemove = (ids: string[]) => {
+    if (isGuest) {
+      guestTodoData.bulkRemove(ids);
+    } else {
+      bulkRemoveMutation({ ids: ids as Id<"todos">[] });
+    }
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -162,8 +226,54 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     }
   };
 
+  const handleFocusDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = myDay.findIndex((t) => t._id === active.id);
+    const newIndex = myDay.findIndex((t) => t._id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(myDay, oldIndex, newIndex);
+    handleReorderFocus(newOrder.map((t, idx) => ({ id: t._id, focusOrder: idx })));
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const selectAll = (ids: string[]) => setSelected(new Set(ids));
+
+  const clearMyDay = () => {
+    if (myDay.length === 0) return;
+    handleBulkUpdate(myDay.map((t) => ({ id: t._id, focusDate: null })));
+  };
+
+  const selectedIds = [...selected];
+  const applyToSelected = (fields: Omit<BulkEdit, "id">) => {
+    handleBulkUpdate(selectedIds.map((id) => ({ id, ...fields })));
+  };
+  const deleteSelected = () => {
+    if (confirm(`Delete ${selected.size} task${selected.size !== 1 ? "s" : ""}?`)) {
+      handleBulkRemove(selectedIds);
+      exitSelect();
+    }
+  };
+
   let pending = todos?.filter((t) => !t.completed) ?? [];
-  const done = todos?.filter((t) => t.completed) ?? [];
+  const done = (todos?.filter((t) => t.completed) ?? []).sort(
+    (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
+  );
+
+  const today = getTodayLocal();
 
   if (filter.moduleFilter !== "all") {
     pending = pending.filter((t) => t.moduleId === filter.moduleFilter);
@@ -172,7 +282,6 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     pending = pending.filter((t) => t.highPriority);
   }
   if (filter.onlyToday) {
-    const today = getTodayLocal();
     pending = pending.filter((t) => t.dueDate === today);
   }
 
@@ -187,6 +296,12 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   };
 
   const sorted = sortItems(pending);
+
+  const pendingAll = todos?.filter((t) => !t.completed) ?? [];
+  const myDay = pendingAll
+    .filter((t) => isFocusToday(t, today))
+    .sort((a, b) => (a.focusOrder ?? 0) - (b.focusOrder ?? 0));
+  const backlogSorted = sorted.filter((t) => !isFocusToday(t, today));
 
   const usedModuleIds = new Set<string>();
   for (const t of sorted) {
@@ -215,6 +330,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
 
   const handleToggleDone = (todo: Todo) => {
     handleComplete(todo._id, !todo.completed);
+    if (!todo.completed) push("Task completed");
   };
 
   const handleDelete = (todo: Todo) => {
@@ -233,24 +349,42 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
     handleProgressUpdate(todo._id, val);
   };
 
-  const renderItem = (item: Todo, isCatchup = false) => (
-    <SortableTodoItem
-      key={item._id}
-      todo={item}
-      expanded={expanded.has(item._id)}
-      onToggleExpand={() => toggleExpand(item._id)}
-      onToggleDone={() => handleToggleDone(item)}
-      onEdit={() => { setEditTodo(item); setShowModal(true); }}
-      onDelete={() => handleDelete(item)}
-      onNavigateToDate={onNavigateToDate}
-      onSubTaskToggle={(stId) => handleSubTaskToggle(item, stId)}
-      onProgressChange={(val) => handleProgressChange(item, val)}
-      isCatchup={isCatchup}
-    />
-  );
+  const renderItem = (item: Todo, isCatchup = false, showPomo = false) => {
+    const focused = isFocusToday(item, today);
+    return (
+      <SortableTodoItem
+        key={item._id}
+        todo={item}
+        expanded={expanded.has(item._id)}
+        onToggleExpand={() => toggleExpand(item._id)}
+        onToggleDone={() => handleToggleDone(item)}
+        onEdit={() => { setEditTodo(item); setShowModal(true); }}
+        onDelete={() => handleDelete(item)}
+        onSubTaskToggle={(stId) => handleSubTaskToggle(item, stId)}
+        onProgressChange={(val) => handleProgressChange(item, val)}
+        isCatchup={isCatchup}
+        isFocus={focused}
+        onToggleFocus={() => handleSetFocus(item._id, focused ? undefined : today)}
+        onSnooze={(until) => handleSnooze(item._id, until)}
+        onStartPomo={
+          showPomo && onStartPomo
+            ? () =>
+                onStartPomo({
+                  _id: item._id,
+                  title: item.title,
+                  moduleName: item.moduleName,
+                })
+            : undefined
+        }
+        selectable={selectMode}
+        selected={selected.has(item._id)}
+        onSelect={() => toggleSelect(item._id)}
+      />
+    );
+  };
 
   const groupedPending: Record<string, Todo[]> = {};
-  for (const t of sorted) {
+  for (const t of backlogSorted) {
     const cat = effectiveCategory(t);
     if (!groupedPending[cat]) groupedPending[cat] = [];
     groupedPending[cat].push(t);
@@ -372,7 +506,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
 
     const buckets = new Map<string, { label: string; order: number; items: Todo[] }>();
 
-    for (const item of sorted) {
+    for (const item of backlogSorted) {
       let key: string;
       let label: string;
       let order: number;
@@ -431,6 +565,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
   })();
 
   const showKanban = filter.groupBy === "category" && categoryColumns.length >= 1;
+  const showBacklog = backlogOpen || myDay.length === 0;
 
   return (
     <div className="p-3 max-w-[90rem] mx-auto pb-24">
@@ -443,16 +578,43 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
             {sorted.length} item{sorted.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          onClick={() => { setEditTodo(null); setShowModal(true); }}
-          className="flex items-center gap-1.5 px-4 py-2 bg-rose-400 hover:bg-rose-500 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          New
-          <span className="hidden sm:inline-block ml-1 opacity-60 text-[10px] uppercase font-bold tracking-wider">N</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {selectMode ? (
+            <>
+              <button
+                onClick={() => selectAll([...myDay, ...backlogSorted].map((t) => t._id))}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-xl bg-cream-100 text-stone-500 hover:bg-cream-200 transition-colors"
+              >
+                Select all
+              </button>
+              <button
+                onClick={exitSelect}
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl bg-stone-700 text-white hover:bg-stone-800 transition-colors"
+              >
+                Done ({selected.size})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setSelectMode(true)}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-xl bg-cream-100 text-stone-500 hover:bg-cream-200 transition-colors"
+              >
+                Select
+              </button>
+              <button
+                onClick={() => { setEditTodo(null); setShowModal(true); }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-400 hover:bg-rose-500 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                New
+                <span className="hidden sm:inline-block ml-1 opacity-60 text-[10px] uppercase font-bold tracking-wider">N</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mb-3 flex-shrink-0">
@@ -469,7 +631,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
         <div className="flex items-center justify-center h-48">
           <div className="w-5 h-5 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : sorted.length === 0 && done.length === 0 ? (
+      ) : pendingAll.length === 0 && done.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-center text-stone-400">
           <div>
             <svg className="w-16 h-16 mx-auto text-mint-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -481,6 +643,68 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
         </div>
       ) : (
         <div className="min-h-0">
+          {myDay.length > 0 && (
+            <section className="mb-4">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/40 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-100 flex-shrink-0">
+                  <SunIcon className="w-4 h-4 text-amber-500" />
+                  <h3 className="font-hand text-2xl text-amber-700">my day</h3>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold font-sans bg-amber-100 text-amber-700">
+                    {myDay.length}
+                  </span>
+                  <button
+                    onClick={clearMyDay}
+                    className="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-600 hover:text-amber-700 px-2 py-1 rounded hover:bg-amber-100 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="p-2 space-y-1">
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleFocusDragEnd}
+                  >
+                    <SortableContext
+                      items={myDay.map((t) => t._id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {myDay.map((item) =>
+                        renderItem(
+                          item,
+                          effectiveCategory(item) === "lecture_catchup",
+                          true,
+                        ),
+                      )}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {backlogSorted.length > 0 && (
+            <div>
+              {myDay.length > 0 ? (
+                <button
+                  onClick={() => setBacklogOpen((o) => !o)}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  <CaretIcon open={showBacklog} />
+                  All tasks
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                    {backlogSorted.length}
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
+                  All tasks
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                    {backlogSorted.length}
+                  </span>
+                </div>
+              )}
+              <div className={showBacklog ? "mt-3" : "hidden"}>
           {showKanban ? (
             <div className="min-h-[50vh] grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
               {categoryColumns.map(renderCategoryColumn)}
@@ -488,7 +712,7 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
           ) : filter.groupBy === "module"             ? (
             <div className="overflow-y-auto space-y-4">
               {Object.entries(
-                sorted.reduce((acc, item) => {
+                backlogSorted.reduce((acc, item) => {
                   const key = item.moduleName || "Other";
                   if (!acc[key]) acc[key] = [];
                   acc[key].push(item);
@@ -558,12 +782,15 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
                 collisionDetection={closestCenter}
                 onDragEnd={handleDragEnd}
               >
-                <SortableContext items={sorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+                <SortableContext items={backlogSorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-1">
-                    {sorted.map((item) => renderItem(item))}
+                    {backlogSorted.map((item) => renderItem(item))}
                   </div>
                 </SortableContext>
               </DndContext>
+            </div>
+          )}
+              </div>
             </div>
           )}
 
@@ -577,10 +804,91 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
               onToggleDone={handleToggleDone}
               onEdit={(t) => { setEditTodo(t); setShowModal(true); }}
               onDelete={handleDelete}
-              onNavigateToDate={onNavigateToDate}
               onSubTaskToggle={handleSubTaskToggle}
               onProgressChange={handleProgressChange}
             />
+          </div>
+        </div>
+      )}
+
+      {selectMode && selected.size > 0 && (
+        <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(56rem,calc(100%-1.5rem))]">
+          <div className="bg-white border border-cream-200 rounded-2xl shadow-xl p-3 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+            <span className="text-stone-500 mr-1 normal-case tracking-normal text-xs">
+              {selected.size} selected
+            </span>
+
+            <input
+              type="date"
+              value={bulkDate}
+              onChange={(e) => setBulkDate(e.target.value)}
+              className="px-2 py-1 rounded-lg border border-cream-200 bg-white text-stone-600 font-semibold normal-case tracking-normal focus:outline-none focus:ring-2 focus:ring-rose-300"
+            />
+            <button
+              onClick={() => bulkDate && applyToSelected({ dueDate: bulkDate })}
+              disabled={!bulkDate}
+              className="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 disabled:opacity-40 transition-colors"
+            >
+              Set due
+            </button>
+            <button
+              onClick={() => applyToSelected({ dueDate: null })}
+              className="px-2 py-1 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+            >
+              Clear date
+            </button>
+
+            <span className="text-stone-200">|</span>
+
+            {SNOOZE_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() => applyToSelected({ snoozedUntil: addDaysLocal(today, p.days) })}
+                className="px-2 py-1 rounded-lg bg-lavender-100 text-lavender-600 hover:bg-lavender-200 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              onClick={() => applyToSelected({ snoozedUntil: null })}
+              className="px-2 py-1 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+            >
+              Unsnooze
+            </button>
+
+            <span className="text-stone-200">|</span>
+
+            <button
+              onClick={() => applyToSelected({ highPriority: true })}
+              className="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 transition-colors"
+            >
+              Priority +
+            </button>
+            <button
+              onClick={() => applyToSelected({ highPriority: false })}
+              className="px-2 py-1 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+            >
+              Priority −
+            </button>
+
+            <span className="text-stone-200">|</span>
+
+            {(["project", "other", "lecture_catchup"] as Category[]).map((c) => (
+              <button
+                key={c}
+                onClick={() => applyToSelected({ category: c })}
+                className="px-2 py-1 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+              >
+                {CATEGORY_META[c].label}
+              </button>
+            ))}
+
+            <button
+              onClick={deleteSelected}
+              className="ml-auto px-2 py-1 rounded-lg bg-rose-400 text-white hover:bg-rose-500 transition-colors"
+            >
+              Delete
+            </button>
           </div>
         </div>
       )}
@@ -615,6 +923,8 @@ export function TodosView({ onNavigateToDate }: { onNavigateToDate?: (date: stri
           } : undefined}
         />
       )}
+
+      <ToastStack toasts={toasts} />
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { query, mutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { matchModuleByTitle } from "./moduleMatcher";
@@ -14,6 +16,37 @@ const SUBTASK_VALIDATOR = v.optional(v.array(v.object({
   title: v.string(),
   done: v.boolean(),
 })));
+
+// Clearable variants for bulk edits: null explicitly removes the field.
+const CLEARABLE_STRING = v.optional(v.union(v.string(), v.null()));
+const CLEARABLE_CATEGORY = v.optional(
+  v.union(
+    v.literal("lecture_catchup"),
+    v.literal("project"),
+    v.literal("other"),
+    v.null(),
+  ),
+);
+
+/**
+ * Keep a lecture's occurrence in step with its catch-up todo, so completing the
+ * todo marks the lecture done on the timetable (and un-completing reverts it to
+ * "todo" while the linked todo still exists).
+ */
+async function syncLinkedOccurrence(
+  ctx: MutationCtx,
+  sourceOccurrenceId: Id<"occurrences"> | undefined,
+  userId: Id<"users">,
+  completed: boolean,
+) {
+  if (!sourceOccurrenceId) return;
+  const occ = await ctx.db.get(sourceOccurrenceId);
+  if (!occ || occ.userId !== userId) return;
+  await ctx.db.patch(sourceOccurrenceId, {
+    status: completed ? "done" : "todo",
+    completedAt: completed ? Date.now() : undefined,
+  });
+}
 
 export const list = query({
   args: { includeCompleted: v.optional(v.boolean()) },
@@ -92,6 +125,9 @@ export const create = mutation({
     manualProgress: v.optional(v.number()),
     linkedEventId: v.optional(v.id("timetableEvents")),
     moduleId: v.optional(v.id("modules")),
+    focusDate: v.optional(v.string()),
+    focusOrder: v.optional(v.number()),
+    snoozedUntil: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -120,6 +156,9 @@ export const update = mutation({
     manualProgress: v.optional(v.number()),
     linkedEventId: v.optional(v.id("timetableEvents")),
     moduleId: v.optional(v.id("modules")),
+    focusDate: v.optional(v.string()),
+    focusOrder: v.optional(v.number()),
+    snoozedUntil: v.optional(v.string()),
   },
   handler: async (ctx, { id, ...updates }) => {
     const userId = await getAuthUserId(ctx);
@@ -146,6 +185,7 @@ export const complete = mutation({
       completed,
       completedAt: completed ? Date.now() : undefined,
     });
+    await syncLinkedOccurrence(ctx, todo.sourceOccurrenceId, userId, completed);
   },
 });
 
@@ -177,6 +217,7 @@ export const updateSubTasks = mutation({
       completed: allDone,
       completedAt: allDone ? Date.now() : undefined,
     });
+    await syncLinkedOccurrence(ctx, todo.sourceOccurrenceId, userId, allDone);
   },
 });
 
@@ -219,6 +260,97 @@ export const reorder = mutation({
       const todo = await ctx.db.get(id);
       if (!todo || todo.userId !== userId) continue;
       await ctx.db.patch(id, { manualOrder });
+    }
+  },
+});
+
+/** Add a todo to "My Day" for a date, or remove it (focusDate undefined). */
+export const setFocus = mutation({
+  args: { id: v.id("todos"), focusDate: v.optional(v.string()) },
+  handler: async (ctx, { id, focusDate }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const todo = await ctx.db.get(id);
+    if (!todo || todo.userId !== userId) throw new Error("Not found");
+    await ctx.db.patch(id, {
+      focusDate,
+      focusOrder: focusDate ? Date.now() : undefined,
+    });
+  },
+});
+
+/** Batch-update focusOrder for drag-to-reorder within "My Day". */
+export const reorderFocus = mutation({
+  args: {
+    updates: v.array(v.object({ id: v.id("todos"), focusOrder: v.number() })),
+  },
+  handler: async (ctx, { updates }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    for (const { id, focusOrder } of updates) {
+      const todo = await ctx.db.get(id);
+      if (!todo || todo.userId !== userId) continue;
+      await ctx.db.patch(id, { focusOrder });
+    }
+  },
+});
+
+/** Snooze a todo until a date, or clear the snooze (until undefined). */
+export const snooze = mutation({
+  args: { id: v.id("todos"), until: v.optional(v.string()) },
+  handler: async (ctx, { id, until }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const todo = await ctx.db.get(id);
+    if (!todo || todo.userId !== userId) throw new Error("Not found");
+    await ctx.db.patch(id, { snoozedUntil: until });
+  },
+});
+
+/** Apply the same edits to many todos (bulk triage). null clears a field. */
+export const bulkUpdate = mutation({
+  args: {
+    updates: v.array(
+      v.object({
+        id: v.id("todos"),
+        dueDate: CLEARABLE_STRING,
+        highPriority: v.optional(v.boolean()),
+        category: CLEARABLE_CATEGORY,
+        snoozedUntil: CLEARABLE_STRING,
+        focusDate: CLEARABLE_STRING,
+      }),
+    ),
+  },
+  handler: async (ctx, { updates }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    for (const u of updates) {
+      const todo = await ctx.db.get(u.id);
+      if (!todo || todo.userId !== userId) continue;
+      const patch: Record<string, unknown> = {};
+      if (u.dueDate !== undefined) patch.dueDate = u.dueDate ?? undefined;
+      if (u.highPriority !== undefined) patch.highPriority = u.highPriority;
+      if (u.category !== undefined) patch.category = u.category ?? undefined;
+      if (u.snoozedUntil !== undefined) patch.snoozedUntil = u.snoozedUntil ?? undefined;
+      if (u.focusDate !== undefined) {
+        patch.focusDate = u.focusDate ?? undefined;
+        if (u.focusDate === null) patch.focusOrder = undefined;
+      }
+      if (Object.keys(patch).length > 0) await ctx.db.patch(u.id, patch);
+    }
+  },
+});
+
+/** Delete many todos at once. */
+export const bulkRemove = mutation({
+  args: { ids: v.array(v.id("todos")) },
+  handler: async (ctx, { ids }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    for (const id of ids) {
+      const todo = await ctx.db.get(id);
+      if (!todo || todo.userId !== userId) continue;
+      await ctx.db.delete(id);
     }
   },
 });

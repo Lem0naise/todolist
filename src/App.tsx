@@ -13,6 +13,7 @@ import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { SplashScreen } from "./components/pomo/SplashScreen";
 import { getTimerInstance, stopTimer, persist, restoreTimer, clearTimer, subscribeToTimerChanges, notifySessionSaved } from "./components/pomo/timerState";
+import { startPomoForTask, type StartableTask } from "./components/pomo/startForTask";
 import { initTimerLeadership, isTimerOwner } from "./components/pomo/timerLeader";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
@@ -20,7 +21,6 @@ import { GuestContext } from "./hooks/useGuestMode";
 
 function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateToAuth: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>("combined");
-  const [navigateToDate, setNavigateToDate] = useState<string | undefined>(undefined);
   const { signOut } = useAuthActions();
   const [pomoTick, setPomoTick] = useState(0);
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
@@ -72,9 +72,14 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
     await signOut();
   };
 
-  const handleNavigateToDate = (date: string) => {
-    setNavigateToDate(date);
-    setActiveTab("today");
+  const handleStartPomo = (task: StartableTask) => {
+    // Don't clobber an in-progress cycle — just surface it.
+    const timer = getTimerInstance();
+    if (!timer?.isRunning && !timer?.isInSplash()) {
+      startPomoForTask(task);
+    }
+    setActiveTab("pomo");
+    setPomoTick((t) => t + 1);
   };
 
   // Pomo timer interval
@@ -165,17 +170,16 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             <CombinedView
               onGoToTodos={() => setActiveTab("todos")}
               onGoToSchedule={() => setActiveTab("today")}
+              onStartPomo={handleStartPomo}
             />
           )}
         {activeTab === "today" && (
           <TodayView
-            key={navigateToDate ?? "today"}
             onGoToTodos={() => setActiveTab("todos")}
-            initialDate={navigateToDate}
           />
         )}
           {activeTab === "todos" && (
-            <TodosView onNavigateToDate={handleNavigateToDate} />
+            <TodosView onStartPomo={handleStartPomo} />
           )}
           {activeTab === "pomo" && (
             <PomoView pomoTick={pomoTick} />

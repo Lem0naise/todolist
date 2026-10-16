@@ -19,6 +19,18 @@ interface GuestTodo {
   manualProgress?: number;
   moduleName?: string;
   manualOrder?: number;
+  focusDate?: string;
+  focusOrder?: number;
+  snoozedUntil?: string;
+}
+
+export interface BulkEdit {
+  id: string;
+  dueDate?: string | null;
+  highPriority?: boolean;
+  category?: Category | null;
+  snoozedUntil?: string | null;
+  focusDate?: string | null;
 }
 
 function loadTodos(): GuestTodo[] {
@@ -52,6 +64,9 @@ export function useGuestTodos(active: boolean) {
       manualProgress: data.manualProgress,
       moduleName: data.moduleName,
       manualOrder: data.manualOrder,
+      focusDate: data.focusDate,
+      focusOrder: data.focusOrder,
+      snoozedUntil: data.snoozedUntil,
     };
     setTodos((prev) => {
       const next = [todo, ...prev];
@@ -119,6 +134,71 @@ export function useGuestTodos(active: boolean) {
     });
   }, [active]);
 
+  const setFocus = useCallback((id: string, focusDate?: string) => {
+    if (!active) return;
+    setTodos((prev) => {
+      const next = prev.map((t) =>
+        t._id === id
+          ? { ...t, focusDate, focusOrder: focusDate ? Date.now() : undefined }
+          : t,
+      );
+      saveTodos(next);
+      return next;
+    });
+  }, [active]);
+
+  const reorderFocus = useCallback((updates: { id: string; focusOrder: number }[]) => {
+    if (!active) return;
+    setTodos((prev) => {
+      const next = prev.map((t) => {
+        const update = updates.find((u) => u.id === t._id);
+        return update ? { ...t, focusOrder: update.focusOrder } : t;
+      });
+      saveTodos(next);
+      return next;
+    });
+  }, [active]);
+
+  const snooze = useCallback((id: string, until?: string) => {
+    if (!active) return;
+    setTodos((prev) => {
+      const next = prev.map((t) => (t._id === id ? { ...t, snoozedUntil: until } : t));
+      saveTodos(next);
+      return next;
+    });
+  }, [active]);
+
+  const bulkUpdate = useCallback((edits: BulkEdit[]) => {
+    if (!active) return;
+    setTodos((prev) => {
+      const next = prev.map((t) => {
+        const edit = edits.find((e) => e.id === t._id);
+        if (!edit) return t;
+        const patch: Partial<GuestTodo> = {};
+        if (edit.dueDate !== undefined) patch.dueDate = edit.dueDate ?? undefined;
+        if (edit.highPriority !== undefined) patch.highPriority = edit.highPriority;
+        if (edit.category !== undefined) patch.category = edit.category ?? undefined;
+        if (edit.snoozedUntil !== undefined) patch.snoozedUntil = edit.snoozedUntil ?? undefined;
+        if (edit.focusDate !== undefined) {
+          patch.focusDate = edit.focusDate ?? undefined;
+          if (edit.focusDate === null) patch.focusOrder = undefined;
+        }
+        return { ...t, ...patch };
+      });
+      saveTodos(next);
+      return next;
+    });
+  }, [active]);
+
+  const bulkRemove = useCallback((ids: string[]) => {
+    if (!active) return;
+    setTodos((prev) => {
+      const next = prev.filter((t) => !ids.includes(t._id));
+      saveTodos(next);
+      return next;
+    });
+  }, [active]);
+
   return {
     todos: active ? todos : [],
     create,
@@ -128,5 +208,10 @@ export function useGuestTodos(active: boolean) {
     reorder,
     updateSubTasks,
     updateProgress,
+    setFocus,
+    reorderFocus,
+    snooze,
+    bulkUpdate,
+    bulkRemove,
   };
 }
