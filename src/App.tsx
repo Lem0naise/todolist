@@ -13,6 +13,7 @@ import { SettingsView } from "./components/SettingsView";
 import { FloatingPomo } from "./components/pomo/FloatingPomo";
 import { SplashScreen } from "./components/pomo/SplashScreen";
 import { getTimerInstance, stopTimer, persist, restoreTimer, clearTimer, subscribeToTimerChanges, notifySessionSaved } from "./components/pomo/timerState";
+import { startPomoForTask, type StartableTask } from "./components/pomo/startForTask";
 import { initTimerLeadership, isTimerOwner } from "./components/pomo/timerLeader";
 import { usePomoData, getLocalDate } from "./components/pomo/usePomoData";
 import { useGuestPomoSessions } from "./hooks/useGuestPomoSessions";
@@ -75,6 +76,12 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
   const handleNavigateToDate = (date: string) => {
     setNavigateToDate(date);
     setActiveTab("today");
+  };
+
+  const handleStartPomo = (task: StartableTask) => {
+    startPomoForTask(task);
+    setActiveTab("pomo");
+    setPomoTick((t) => t + 1);
   };
 
   // Pomo timer interval
@@ -165,6 +172,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             <CombinedView
               onGoToTodos={() => setActiveTab("todos")}
               onGoToSchedule={() => setActiveTab("today")}
+              onStartPomo={handleStartPomo}
             />
           )}
         {activeTab === "today" && (
@@ -175,7 +183,10 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           />
         )}
           {activeTab === "todos" && (
-            <TodosView onNavigateToDate={handleNavigateToDate} />
+            <TodosView
+              onNavigateToDate={handleNavigateToDate}
+              onStartPomo={handleStartPomo}
+            />
           )}
           {activeTab === "pomo" && (
             <PomoView pomoTick={pomoTick} />

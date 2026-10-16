@@ -3,6 +3,7 @@ import { SchedulePanel } from "./SchedulePanel";
 import { TasksPanel } from "./TasksPanel";
 import { useGuest } from "../../hooks/useGuestMode";
 import { getTodayLocal } from "../../lib/date";
+import type { StartableTask } from "../pomo/startForTask";
 
 function getTodayStr() {
   return getTodayLocal();
@@ -11,9 +12,11 @@ function getTodayStr() {
 export function CombinedView({
   onGoToTodos,
   onGoToSchedule,
+  onStartPomo,
 }: {
   onGoToTodos: () => void;
   onGoToSchedule: () => void;
+  onStartPomo: (task: StartableTask) => void;
 }) {
   const { isGuest } = useGuest();
   const todayStr = getTodayStr();
@@ -61,7 +64,11 @@ export function CombinedView({
             )}
           </div>
           <div className="flex-1">
-            <TasksPanel todayStr={todayStr} onGoToTodos={onGoToTodos} />
+            <TasksPanel
+              todayStr={todayStr}
+              onGoToTodos={onGoToTodos}
+              onStartPomo={onStartPomo}
+            />
           </div>
         </div>
       </div>
