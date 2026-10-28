@@ -5,13 +5,10 @@ import type { Todo } from "./utils";
 
 export function SortableTodoItem(props: {
   todo: Todo;
-  expanded: boolean;
-  onToggleExpand: () => void;
+  onOpen: () => void;
   onToggleDone: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSubTaskToggle: (subTaskId: string) => void;
-  onProgressChange: (val: number) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   isCatchup?: boolean;
   isFocus?: boolean;
   onToggleFocus?: () => void;

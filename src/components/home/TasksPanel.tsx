@@ -6,6 +6,7 @@ import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
 import { PanelCard } from "./PanelCard";
 import { TodoModal } from "../todos/TodoModal";
+import { TaskFocusModal } from "../todos/TaskFocusModal";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { StartableTask } from "../pomo/startForTask";
 import { ToastStack } from "../Toast";
@@ -55,8 +56,14 @@ export function TasksPanel({
 
   const completeTodo = useMutation(api.todos.complete);
   const setFocus = useMutation(api.todos.setFocus);
+  const removeTodo = useMutation(api.todos.remove);
+  const updateSubTasks = useMutation(api.todos.updateSubTasks);
+  const updateProgress = useMutation(api.todos.updateProgress);
+  const snoozeTodo = useMutation(api.todos.snooze);
   const { toasts, push } = useToast();
   const [showModal, setShowModal] = useState(false);
+  const [editTodo, setEditTodo] = useState<Todo | null>(null);
+  const [focusTodoId, setFocusTodoId] = useState<string | null>(null);
 
   const handleToggle = (id: string, completed: boolean) => {
     if (isGuest) {
@@ -77,6 +84,44 @@ export function TasksPanel({
     }
   };
 
+  const handleDelete = (todo: Todo): boolean => {
+    if (!confirm("Delete this task?")) return false;
+    if (isGuest) {
+      guestTodoData.remove(todo._id);
+    } else {
+      removeTodo({ id: todo._id as Id<"todos"> });
+    }
+    return true;
+  };
+
+  const handleSubTaskToggle = (todo: Todo, subTaskId: string) => {
+    if (!todo.subTasks) return;
+    const updated = todo.subTasks.map((subTask) =>
+      subTask.id === subTaskId ? { ...subTask, done: !subTask.done } : subTask,
+    );
+    if (isGuest) {
+      guestTodoData.updateSubTasks(todo._id, updated);
+    } else {
+      updateSubTasks({ id: todo._id as Id<"todos">, subTasks: updated });
+    }
+  };
+
+  const handleProgressChange = (todo: Todo, value: number) => {
+    if (isGuest) {
+      guestTodoData.updateProgress(todo._id, value);
+    } else {
+      updateProgress({ id: todo._id as Id<"todos">, manualProgress: value });
+    }
+  };
+
+  const handleSnooze = (todo: Todo, until?: string) => {
+    if (isGuest) {
+      guestTodoData.snooze(todo._id, until);
+    } else {
+      snoozeTodo({ id: todo._id as Id<"todos">, until });
+    }
+  };
+
   const startPomo = (todo: Todo) =>
     onStartPomo({
       _id: todo._id,
@@ -89,6 +134,9 @@ export function TasksPanel({
   const myDay = visible
     .filter((t) => isFocusToday(t, todayStr))
     .sort((a, b) => (a.focusOrder ?? 0) - (b.focusOrder ?? 0));
+  const focusTodo = focusTodoId
+    ? open.find((todo) => todo._id === focusTodoId) ?? null
+    : null;
   const nextAction =
     myDay.length > 0
       ? pickNextAction(myDay, todayStr)
@@ -133,7 +181,10 @@ export function TasksPanel({
       action={{ label: "all tasks", onClick: onGoToTodos }}
       headerAction={
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setEditTodo(null);
+            setShowModal(true);
+          }}
           className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition-colors"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -216,6 +267,7 @@ export function TasksPanel({
               onToggle={handleToggle}
               onStartPomo={startPomo}
               onToggleFocus={handleToggleFocus}
+              onOpen={(todo) => setFocusTodoId(todo._id)}
               forceAll
             />
           )}
@@ -231,6 +283,7 @@ export function TasksPanel({
               onToggle={handleToggle}
               onStartPomo={startPomo}
               onToggleFocus={handleToggleFocus}
+              onOpen={(todo) => setFocusTodoId(todo._id)}
               onMore={g.items.length > GROUP_CAP ? onGoToTodos : undefined}
             />
           ))}
@@ -239,9 +292,35 @@ export function TasksPanel({
 
       <ToastStack toasts={toasts} />
 
+      {focusTodo && !showModal && (
+        <TaskFocusModal
+          todo={focusTodo}
+          today={todayStr}
+          onClose={() => setFocusTodoId(null)}
+          onToggleDone={() => {
+            const wasCompleted = focusTodo.completed;
+            handleToggle(focusTodo._id, focusTodo.completed);
+            if (!wasCompleted) setFocusTodoId(null);
+          }}
+          onEdit={() => {
+            setEditTodo(focusTodo);
+            setShowModal(true);
+          }}
+          onDelete={() => {
+            if (handleDelete(focusTodo)) setFocusTodoId(null);
+          }}
+          onToggleFocus={() => handleToggleFocus(focusTodo)}
+          onSnooze={(until) => handleSnooze(focusTodo, until)}
+          onSubTaskToggle={(subTaskId) => handleSubTaskToggle(focusTodo, subTaskId)}
+          onProgressChange={(value) => handleProgressChange(focusTodo, value)}
+          onStartPomo={() => startPomo(focusTodo)}
+        />
+      )}
+
       {showModal && (
         <TodoModal
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); setEditTodo(null); }}
+          editTodo={editTodo ?? undefined}
           isGuest={isGuest}
           onGuestCreate={isGuest ? (data: Record<string, unknown>) => {
             guestTodoData.create({
@@ -280,6 +359,7 @@ function TodoGroup({
   onToggle,
   onStartPomo,
   onToggleFocus,
+  onOpen,
   onMore,
   forceAll,
 }: {
@@ -291,11 +371,25 @@ function TodoGroup({
   onToggle: (id: string, completed: boolean) => void;
   onStartPomo: (todo: Todo) => void;
   onToggleFocus: (todo: Todo) => void;
+  onOpen: (todo: Todo) => void;
   onMore?: () => void;
   forceAll?: boolean;
 }) {
   const shown = forceAll ? todos : todos.slice(0, GROUP_CAP);
   const hidden = todos.length - shown.length;
+
+  const handleRowClick = (todo: Todo, e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select")) return;
+    onOpen(todo);
+  };
+
+  const handleRowKeyDown = (todo: Todo, e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    onOpen(todo);
+  };
 
   return (
     <div className={`p-2.5 rounded-xl border border-cream-200 ${bgFade || "bg-cream-50/30"}`}>
@@ -311,7 +405,10 @@ function TodoGroup({
           return (
             <div
               key={todo._id}
-              className={`flex flex-col gap-1 px-2.5 py-1.5 rounded-lg border transition-all ${
+              onClick={(e) => handleRowClick(todo, e)}
+              onKeyDown={(e) => handleRowKeyDown(todo, e)}
+              tabIndex={0}
+              className={`flex flex-col gap-1 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
                 todo.highPriority
                   ? "bg-rose-50 border-rose-100"
                   : isProject

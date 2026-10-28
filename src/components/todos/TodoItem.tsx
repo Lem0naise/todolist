@@ -5,20 +5,11 @@ import {
   computeProgress,
   effectiveCategory,
   isSnoozed,
-  renderLinkedText,
   SNOOZE_PRESETS,
   type Todo,
 } from "./utils";
 import { addDaysLocal, getTodayLocal } from "../../lib/date";
 import { PlayIcon, SunIcon } from "../icons";
-
-function CaretIcon() {
-  return (
-    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
 
 function CheckIcon() {
   return (
@@ -63,13 +54,10 @@ function ClockIcon() {
 
 export function TodoItem({
   todo,
-  expanded,
-  onToggleExpand,
+  onOpen,
   onToggleDone,
   onEdit,
   onDelete,
-  onSubTaskToggle,
-  onProgressChange,
   dragHandleProps,
   isCatchup,
   isFocus,
@@ -81,13 +69,10 @@ export function TodoItem({
   onSelect,
 }: {
   todo: Todo;
-  expanded: boolean;
-  onToggleExpand: () => void;
+  onOpen: () => void;
   onToggleDone: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSubTaskToggle: (subTaskId: string) => void;
-  onProgressChange: (val: number) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   dragHandleProps?: Record<string, unknown>;
   isCatchup?: boolean;
   isFocus?: boolean;
@@ -103,7 +88,6 @@ export function TodoItem({
   const completeTimer = useRef<number | null>(null);
   const today = getTodayLocal();
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
-  const hasDetails = !!todo.description;
   const progress = computeProgress(todo);
   const cat = effectiveCategory(todo);
   const isProject = cat === "project";
@@ -150,23 +134,35 @@ export function TodoItem({
 
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (target.closest("button, a, input, textarea, select, [data-no-expand]")) return;
+    if (target.closest("button, a, input, textarea, select, [data-no-open]")) return;
     if (selectable) {
       onSelect?.();
       return;
     }
-    if (!hasDetails) return;
-    onToggleExpand();
+    onOpen();
+  };
+
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    if (selectable) {
+      onSelect?.();
+      return;
+    }
+    onOpen();
   };
 
   return (
     <div
       onClick={handleCardClick}
-      className={`rounded-lg border px-3 py-2 transition-all text-sm ${rowBg} ${
-        hasDetails && !selectable ? "cursor-pointer" : ""
-      } ${snoozed ? "opacity-60" : ""} ${
-        selected ? "ring-2 ring-lavender-300" : ""
-      } ${completing ? "task-complete-flash" : ""}`}
+      onKeyDown={handleCardKeyDown}
+      tabIndex={0}
+      className={`rounded-lg border px-3 py-2 transition-all text-sm cursor-pointer ${rowBg} ${
+        snoozed ? "opacity-60" : ""
+      } ${selected ? "ring-2 ring-lavender-300" : ""} ${
+        completing ? "task-complete-flash" : ""
+      }`}
     >
       <div className="flex items-start gap-2">
         {selectable ? (
@@ -189,7 +185,7 @@ export function TodoItem({
           !isCatchup && (
             <div
               {...dragHandleProps}
-              data-no-expand
+              data-no-open
               className="mt-0.5 cursor-grab active:cursor-grabbing text-stone-300 hover:text-stone-500 p-0.5 -ml-1"
             >
               <GripIcon />
@@ -280,20 +276,6 @@ export function TodoItem({
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-0.5">
-            {hasDetails && !selectable && (
-              <button
-                onClick={onToggleExpand}
-                className="text-[10px] font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 flex items-center gap-1"
-              >
-                <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
-                  <CaretIcon />
-                </span>
-                {expanded ? "Hide" : "Notes"}
-              </button>
-            )}
-          </div>
-
           {isProject && !todo.completed && progress !== null && (
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-rose-100 rounded-full overflow-hidden">
@@ -305,57 +287,6 @@ export function TodoItem({
               <span className="text-[10px] text-rose-500 font-bold w-7 text-right">
                 {progress}%
               </span>
-            </div>
-          )}
-
-          {isProject && !todo.completed && todo.subTasks && todo.subTasks.length > 0 && (
-            <div className="mt-2 space-y-1 pl-1 border-l-2 border-rose-100">
-              {todo.subTasks.map((st) => (
-                <button
-                  key={st.id}
-                  onClick={() => onSubTaskToggle(st.id)}
-                  className="flex items-center gap-2 w-full text-left px-2 py-0.5 hover:bg-white/80 rounded transition-colors"
-                >
-                  <span
-                    className={`flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${
-                      st.done
-                        ? "bg-rose-400 border-rose-400"
-                        : "border-stone-300 bg-white"
-                    }`}
-                  >
-                    {st.done && <CheckIcon />}
-                  </span>
-                  <span
-                    className={`text-xs ${
-                      st.done
-                        ? "line-through text-stone-400"
-                        : "text-stone-700"
-                    }`}
-                  >
-                    {st.title}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {isProject && !todo.completed && (!todo.subTasks || todo.subTasks.length === 0) && (
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={todo.manualProgress ?? 0}
-                onChange={(e) => onProgressChange(Number(e.target.value))}
-                className="flex-1 accent-rose-400 h-1 cursor-ew-resize"
-              />
-            </div>
-          )}
-
-          {expanded && todo.description && (
-            <div className="mt-2 text-xs text-stone-600 bg-cream-50 rounded-lg p-2.5 border border-cream-200 whitespace-pre-wrap break-words font-medium leading-relaxed">
-              {renderLinkedText(todo.description)}
             </div>
           )}
         </div>
@@ -385,7 +316,7 @@ export function TodoItem({
               </button>
             )}
             {onSnooze && (
-              <div className="relative" data-no-expand>
+              <div className="relative" data-no-open>
                 <button
                   onClick={() => setShowSnooze((s) => !s)}
                   title="Snooze"
@@ -440,18 +371,24 @@ export function TodoItem({
                 )}
               </div>
             )}
-            <button
-              onClick={onEdit}
-              className="p-1 text-stone-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors"
-            >
-              <EditIcon />
-            </button>
-            <button
-              onClick={onDelete}
-              className="p-1 text-stone-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors"
-            >
-              <TrashIcon />
-            </button>
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                title="Edit task"
+                className="p-1 text-stone-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors"
+              >
+                <EditIcon />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                title="Delete task"
+                className="p-1 text-stone-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors"
+              >
+                <TrashIcon />
+              </button>
+            )}
           </div>
         )}
       </div>

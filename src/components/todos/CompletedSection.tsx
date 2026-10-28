@@ -17,24 +17,14 @@ export function CompletedSection({
   items,
   showCompleted,
   onToggleShow,
-  expandedIds,
-  onToggleExpand,
+  onOpen,
   onToggleDone,
-  onEdit,
-  onDelete,
-  onSubTaskToggle,
-  onProgressChange,
 }: {
   items: Todo[];
   showCompleted: boolean;
   onToggleShow: () => void;
-  expandedIds: Set<string>;
-  onToggleExpand: (id: string) => void;
+  onOpen: (todo: Todo) => void;
   onToggleDone: (todo: Todo) => void;
-  onEdit: (todo: Todo) => void;
-  onDelete: (todo: Todo) => void;
-  onSubTaskToggle: (todo: Todo, stId: string) => void;
-  onProgressChange: (todo: Todo, val: number) => void;
 }) {
   if (items.length === 0) return null;
 
@@ -42,6 +32,7 @@ export function CompletedSection({
     <div className="pt-3 border-t border-cream-200">
       <button
         onClick={onToggleShow}
+        aria-expanded={showCompleted}
         className="text-xs font-bold tracking-wider uppercase text-stone-400 hover:text-stone-600 flex items-center gap-1.5 transition-colors"
       >
         <CaretIcon open={showCompleted} />
@@ -53,13 +44,8 @@ export function CompletedSection({
             <SortableTodoItem
               key={todo._id}
               todo={todo}
-              expanded={expandedIds.has(todo._id)}
-              onToggleExpand={() => onToggleExpand(todo._id)}
+              onOpen={() => onOpen(todo)}
               onToggleDone={() => onToggleDone(todo)}
-              onEdit={() => onEdit(todo)}
-              onDelete={() => onDelete(todo)}
-              onSubTaskToggle={(stId) => onSubTaskToggle(todo, stId)}
-              onProgressChange={(val) => onProgressChange(todo, val)}
               isCatchup={effectiveCategory(todo) === "lecture_catchup"}
             />
           ))}

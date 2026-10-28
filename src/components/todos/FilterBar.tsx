@@ -13,13 +13,11 @@ export function FilterBar({
   filter,
   onChange,
   modules,
-  activeCount,
   onResetModuleFilter,
 }: {
   filter: FilterState;
   onChange: (f: FilterState) => void;
   modules: Module[];
-  activeCount: number;
   onResetModuleFilter: () => void;
 }) {
   const update = (partial: Partial<FilterState>) => onChange({ ...filter, ...partial });
@@ -158,8 +156,6 @@ export function FilterBar({
       >
         Today
       </button>
-
-      <span className="text-stone-400 ml-auto">{activeCount} items</span>
     </div>
   );
 }

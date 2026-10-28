@@ -83,13 +83,14 @@ src/
   components/
     Auth.tsx, Nav.tsx, SettingsView.tsx
     home/                   CombinedView + SchedulePanel / TasksPanel / PanelCard
-    todos/                  TodosView, TodoModal, TodoItem, SortableTodoItem,
-                            FilterBar, CompletedSection, utils.tsx
+    todos/                  TodosView, TodoModal, TaskFocusModal, GroupSection,
+                            TodoItem, SortableTodoItem, FilterBar,
+                            CompletedSection, utils.tsx
     schedule/               TodayView, DayColumn, WeekNav, EventCard
     pomo/                   PomoView, PomoTimer, timerState, timerLeader,
                             SplashScreen, FloatingPomo, usePomoData
   hooks/                    useGuestMode, useGuestTodos, useGuestPomoSessions,
-                            useLocalCache
+                            useLocalCache, useGroupCollapse
   lib/date.ts               Local-timezone date helpers (USE THESE)
   index.css                 Tailwind v4 theme tokens
 ```
@@ -174,6 +175,9 @@ anchors, cross-tab sync). Do not add narration-only comments.
   Keep both paths working when changing todo/pomo features.
 - `useLocalCache(key, liveData)` returns live Convex data when present and falls
   back to a previously cached localStorage copy otherwise (offline-ish UX).
+- `useGroupCollapse` persists todo group collapse state to
+  `localStorage["unitrack:group-prefs"]` for both guest and authenticated users
+  (device-local, like the filter).
 
 ### Lecture → todo flow
 - Clicking **Todo** on an event calls `occurrences.convertToTodo`, which creates

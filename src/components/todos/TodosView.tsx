@@ -4,9 +4,12 @@ import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos, type BulkEdit } from "../../hooks/useGuestTodos";
+import { useGroupCollapse, groupKey } from "../../hooks/useGroupCollapse";
 import { addDaysLocal, getTodayLocal, startOfWeekLocal } from "../../lib/date";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
+import { TaskFocusModal } from "./TaskFocusModal";
+import { CollapsibleGroup } from "./GroupSection";
 import { FilterBar } from "./FilterBar";
 import { CompletedSection } from "./CompletedSection";
 import { SortableTodoItem } from "./SortableTodoItem";
@@ -61,12 +64,12 @@ export function TodosView({
 }) {
   const [showModal, setShowModal] = useState(false);
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [focusTodoId, setFocusTodoId] = useState<string | null>(null);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
+  const { isCollapsed, setCollapsed, setManyCollapsed } = useGroupCollapse();
   const { toasts, push } = useToast();
   const [filter, setFilter] = useState<FilterState>(() => {
     try {
@@ -201,7 +204,7 @@ export function TodosView({
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if ((e.key === "n" || e.key === "N") && !showModal) {
+      if ((e.key === "n" || e.key === "N") && !showModal && !focusTodoId) {
         e.preventDefault();
         setEditTodo(null);
         setShowModal(true);
@@ -209,7 +212,7 @@ export function TodosView({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showModal]);
+  }, [showModal, focusTodoId]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -310,31 +313,20 @@ export function TodosView({
 
   const availableModules = (modules ?? []).filter((m) => usedModuleIds.has(m._id));
 
-  const toggleCollapse = (key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const handleToggleDone = (todo: Todo) => {
     handleComplete(todo._id, !todo.completed);
     if (!todo.completed) push("Task completed");
   };
 
-  const handleDelete = (todo: Todo) => {
-    if (confirm("Delete this task?")) handleRemove(todo._id);
+  const handleDelete = (todo: Todo): boolean => {
+    if (!confirm("Delete this task?")) return false;
+    handleRemove(todo._id);
+    return true;
+  };
+
+  const selectGroup = (items: Todo[]) => {
+    setSelected(new Set(items.map((t) => t._id)));
+    setSelectMode(true);
   };
 
   const handleSubTaskToggle = (todo: Todo, stId: string) => {
@@ -355,13 +347,10 @@ export function TodosView({
       <SortableTodoItem
         key={item._id}
         todo={item}
-        expanded={expanded.has(item._id)}
-        onToggleExpand={() => toggleExpand(item._id)}
+        onOpen={() => setFocusTodoId(item._id)}
         onToggleDone={() => handleToggleDone(item)}
         onEdit={() => { setEditTodo(item); setShowModal(true); }}
         onDelete={() => handleDelete(item)}
-        onSubTaskToggle={(stId) => handleSubTaskToggle(item, stId)}
-        onProgressChange={(val) => handleProgressChange(item, val)}
         isCatchup={isCatchup}
         isFocus={focused}
         onToggleFocus={() => handleSetFocus(item._id, focused ? undefined : today)}
@@ -399,24 +388,37 @@ export function TodosView({
 
   const renderCategoryColumn = (cat: (typeof categoryColumns)[0]) => {
     const { items, meta, isCatchup } = cat;
-    const isCollapsed = collapsed.has(cat.cat);
+    const key = groupKey.category(cat.cat);
+    const isGroupCollapsed = isCollapsed(key);
+    const moduleGroups = isCatchup
+      ? Object.entries(
+          items.reduce((acc, item) => {
+            const moduleName = item.moduleName || "Other";
+            if (!acc[moduleName]) acc[moduleName] = [];
+            acc[moduleName].push(item);
+            return acc;
+          }, {} as Record<string, Todo[]>),
+        ).sort(([a], [b]) => {
+          if (a === "Other") return 1;
+          if (b === "Other") return -1;
+          return a.localeCompare(b);
+        })
+      : [];
 
     return (
-      <div key={cat.cat} className="flex flex-col min-h-0 bg-white/40 rounded-xl border border-cream-200">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-cream-100 flex-shrink-0">
-          <button
-            onClick={() => toggleCollapse(cat.cat)}
-            className="flex items-center gap-1.5 font-bold tracking-wide"
-          >
-            <CaretIcon open={!isCollapsed} />
-            <span className={`text-2xl uppercase font-hand text-2xl ${meta.color}`}>
-              {meta.label}
-            </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold font-sans ${meta.color} ${meta.bg}`}>
-              {items.length}
-            </span>
-          </button>
-          <div className="ml-auto flex items-center gap-0.5">
+      <CollapsibleGroup
+        key={cat.cat}
+        label={meta.label}
+        count={items.length}
+        open={!isGroupCollapsed}
+        onToggle={() => setCollapsed(key, !isGroupCollapsed)}
+        className="flex flex-col min-h-0 bg-white/40 rounded-xl border border-cream-200"
+        headerClassName="px-3 py-2 border-b border-cream-100 flex-shrink-0"
+        bodyClassName="flex-1 overflow-y-auto p-2 space-y-1 min-h-0"
+        labelClassName={`font-bold text-2xl uppercase font-hand ${meta.color}`}
+        countClassName={`${meta.color} ${meta.bg}`}
+        right={
+          <>
             {!isCatchup && (
               <button
                 onClick={() => setFilter({ ...filter, sort: "manual" })}
@@ -443,52 +445,39 @@ export function TodosView({
             >
               &minus;
             </button>
-          </div>
-        </div>
-
-        {!isCollapsed && (
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
-            {isCatchup ? (
-              <>
-                {Object.entries(
-                  items.reduce((acc, item) => {
-                    const key = item.moduleName || "Other";
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(item);
-                    return acc;
-                  }, {} as Record<string, Todo[]>)
-                )
-                  .sort(([a], [b]) => {
-                    if (a === "Other") return 1;
-                    if (b === "Other") return -1;
-                    return a.localeCompare(b);
-                  })
-                  .map(([moduleName, moduleItems]) => {
-                    const mod = (modules ?? []).find((m) => m.name === moduleName);
-                    return (
-                      <div key={moduleName} className="space-y-1 pl-2" style={mod?.color ? { borderLeft: `3px solid ${mod.color}` } : { borderLeft: "3px solid #c4b5e3" }}>
-                        <h4 className="text-xs font-bold text-lavender-500 font-hand text-lg pl-1">
-                          {moduleName}
-                        </h4>
-                        {moduleItems.map((item) => renderItem(item, true))}
-                      </div>
-                    );
-                  })}
-              </>
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext items={items.map((t) => t._id)} strategy={verticalListSortingStrategy}>
-                  {items.map((item) => renderItem(item))}
-                </SortableContext>
-              </DndContext>
-            )}
-          </div>
+          </>
+        }
+      >
+        {isCatchup ? (
+          <>
+            {moduleGroups.map(([moduleName, moduleItems]) => {
+              const mod = (modules ?? []).find((m) => m.name === moduleName);
+              return (
+                <div
+                  key={moduleName}
+                  className="space-y-1 pl-2"
+                  style={mod?.color ? { borderLeft: `3px solid ${mod.color}` } : { borderLeft: "3px solid #c4b5e3" }}
+                >
+                  <h4 className="text-xs font-bold text-lavender-500 font-hand text-lg pl-1">
+                    {moduleName}
+                  </h4>
+                  {moduleItems.map((item) => renderItem(item, true))}
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={items.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+              {items.map((item) => renderItem(item))}
+            </SortableContext>
+          </DndContext>
         )}
-      </div>
+      </CollapsibleGroup>
     );
   };
 
@@ -555,17 +544,211 @@ export function TodosView({
 
     return [...buckets.entries()]
       .sort((a, b) => a[1].order - b[1].order)
-      .map(([key, bucket]) => ({
-        key,
-        label: bucket.label,
-        items: [...bucket.items].sort((x, y) =>
-          (x.dueDate ?? "9999-12-31").localeCompare(y.dueDate ?? "9999-12-31"),
-        ),
-      }));
+      .map(([key, bucket]) => {
+        const isOverdue = key === "overdue";
+        const isToday = key === "today";
+        return {
+          key,
+          label: bucket.label,
+          items: [...bucket.items].sort((x, y) =>
+            (x.dueDate ?? "9999-12-31").localeCompare(y.dueDate ?? "9999-12-31"),
+          ),
+          // Weeks beyond the next one start folded so a long backlog stays calm.
+          defaultCollapsed: key.startsWith("week-"),
+          accentColor: isOverdue ? "#f4a7b9" : isToday ? "#f9ca76" : "#c4b5e3",
+          labelClassName: isOverdue
+            ? "text-rose-500"
+            : isToday
+              ? "text-amber-600"
+              : "text-lavender-500",
+          countClassName: isOverdue
+            ? "bg-rose-100 text-rose-600"
+            : isToday
+              ? "bg-amber-100 text-amber-700"
+              : "bg-lavender-100 text-lavender-500",
+        };
+      });
+  })();
+
+  const moduleGroups = (() => {
+    if (filter.groupBy !== "module") return [];
+    return Object.entries(
+      backlogSorted.reduce((acc, item) => {
+        const key = item.moduleName || "Other";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(item);
+        return acc;
+      }, {} as Record<string, Todo[]>),
+    )
+      .sort(([a], [b]) => {
+        if (a === "Other") return 1;
+        if (b === "Other") return -1;
+        return a.localeCompare(b);
+      })
+      .map(([name, items]) => {
+        const mod = (modules ?? []).find((m) => m.name === name);
+        return { name, items, color: mod?.color ?? "#c4b5e3" };
+      });
   })();
 
   const showKanban = filter.groupBy === "category" && categoryColumns.length >= 1;
   const showBacklog = backlogOpen || myDay.length === 0;
+
+  const activeGroups = showKanban
+    ? categoryColumns.map((col) => ({
+        key: groupKey.category(col.cat),
+        defaultCollapsed: false,
+      }))
+    : filter.groupBy === "module"
+      ? moduleGroups.map((group) => ({
+          key: groupKey.module(group.name),
+          defaultCollapsed: false,
+        }))
+      : filter.groupBy === "date"
+        ? dateGroups.map((group) => ({
+            key: groupKey.date(group.key),
+            defaultCollapsed: group.defaultCollapsed,
+          }))
+        : [];
+
+  const anyGroupExpanded = activeGroups.some(
+    (group) => !isCollapsed(group.key, group.defaultCollapsed),
+  );
+  const toggleAllGroups = () =>
+    setManyCollapsed(activeGroups.map((group) => group.key), anyGroupExpanded);
+
+  const renderGroupItems = (items: Todo[]) => (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={items.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+        {items.map((item) =>
+          renderItem(item, effectiveCategory(item) === "lecture_catchup"),
+        )}
+      </SortableContext>
+    </DndContext>
+  );
+
+  const groupSelectButton = (items: Todo[]) =>
+    selectMode ? undefined : (
+      <button
+        type="button"
+        onClick={() => selectGroup(items)}
+        className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase text-stone-400 hover:bg-stone-100 transition-colors"
+      >
+        Select
+      </button>
+    );
+
+  const renderModuleGroups = () => (
+    <div className="overflow-y-auto space-y-4">
+      {moduleGroups.map((group) => {
+        const key = groupKey.module(group.name);
+        const isGroupCollapsed = isCollapsed(key);
+        return (
+          <CollapsibleGroup
+            key={group.name}
+            label={group.name}
+            count={group.items.length}
+            open={!isGroupCollapsed}
+            onToggle={() => setCollapsed(key, !isGroupCollapsed)}
+            className="pl-3"
+            style={{ borderLeft: `3px solid ${group.color}` }}
+            labelClassName="font-bold font-hand text-2xl text-lavender-500"
+            countClassName="bg-lavender-100 text-lavender-500"
+            bodyClassName="space-y-1"
+            right={groupSelectButton(group.items)}
+          >
+            {renderGroupItems(group.items)}
+          </CollapsibleGroup>
+        );
+      })}
+    </div>
+  );
+
+  const renderDateGroups = () => (
+    <div className="overflow-y-auto space-y-4">
+      {dateGroups.map((group) => {
+        const key = groupKey.date(group.key);
+        const isGroupCollapsed = isCollapsed(key, group.defaultCollapsed);
+        return (
+          <CollapsibleGroup
+            key={group.key}
+            label={group.label}
+            count={group.items.length}
+            open={!isGroupCollapsed}
+            onToggle={() => setCollapsed(key, !isGroupCollapsed)}
+            className="pl-3"
+            style={{ borderLeft: `3px solid ${group.accentColor}` }}
+            labelClassName={`font-bold font-hand text-2xl ${group.labelClassName}`}
+            countClassName={group.countClassName}
+            bodyClassName="space-y-1"
+            right={groupSelectButton(group.items)}
+          >
+            {renderGroupItems(group.items)}
+          </CollapsibleGroup>
+        );
+      })}
+    </div>
+  );
+
+  const renderFlatList = () => (
+    <div className="overflow-y-auto">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={backlogSorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1">
+            {backlogSorted.map((item) => renderItem(item))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+
+  const focusTodo = focusTodoId
+    ? (todos ?? []).find((todo) => todo._id === focusTodoId) ?? null
+    : null;
+
+  const renderFocusModal = (todo: Todo) => (
+    <TaskFocusModal
+      todo={todo}
+      today={today}
+      onClose={() => setFocusTodoId(null)}
+      onToggleDone={() => {
+        const wasCompleted = todo.completed;
+        handleToggleDone(todo);
+        if (!wasCompleted) setFocusTodoId(null);
+      }}
+      onEdit={() => {
+        setEditTodo(todo);
+        setShowModal(true);
+      }}
+      onDelete={() => {
+        if (handleDelete(todo)) setFocusTodoId(null);
+      }}
+      onToggleFocus={() =>
+        handleSetFocus(todo._id, isFocusToday(todo, today) ? undefined : today)
+      }
+      onSnooze={(until) => handleSnooze(todo._id, until)}
+      onSubTaskToggle={(stId) => handleSubTaskToggle(todo, stId)}
+      onProgressChange={(val) => handleProgressChange(todo, val)}
+      onStartPomo={
+        onStartPomo
+          ? () =>
+              onStartPomo({
+                _id: todo._id,
+                title: todo.title,
+                moduleName: todo.moduleName,
+              })
+          : undefined
+      }
+    />
+  );
 
   return (
     <div className="p-3 max-w-[90rem] mx-auto pb-24">
@@ -622,7 +805,6 @@ export function TodosView({
           filter={filter}
           onChange={setFilter}
           modules={availableModules}
-          activeCount={sorted.length}
           onResetModuleFilter={() => setFilter({ ...filter, moduleFilter: "all" })}
         />
       </div>
@@ -685,111 +867,48 @@ export function TodosView({
 
           {backlogSorted.length > 0 && (
             <div>
-              {myDay.length > 0 ? (
-                <button
-                  onClick={() => setBacklogOpen((o) => !o)}
-                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 transition-colors"
-                >
-                  <CaretIcon open={showBacklog} />
-                  All tasks
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
-                    {backlogSorted.length}
-                  </span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
-                  All tasks
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
-                    {backlogSorted.length}
-                  </span>
-                </div>
-              )}
-              <div className={showBacklog ? "mt-3" : "hidden"}>
-          {showKanban ? (
-            <div className="min-h-[50vh] grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-              {categoryColumns.map(renderCategoryColumn)}
-            </div>
-          ) : filter.groupBy === "module"             ? (
-            <div className="overflow-y-auto space-y-4">
-              {Object.entries(
-                backlogSorted.reduce((acc, item) => {
-                  const key = item.moduleName || "Other";
-                  if (!acc[key]) acc[key] = [];
-                  acc[key].push(item);
-                  return acc;
-                }, {} as Record<string, Todo[]>)
-              )
-                .sort(([a], [b]) => {
-                  if (a === "Other") return 1;
-                  if (b === "Other") return -1;
-                  return a.localeCompare(b);
-                })
-                .map(([moduleName, moduleItems]) => {
-                  const mod = (modules ?? []).find((m) => m.name === moduleName);
-                  return (
-                    <div key={moduleName} className="space-y-1 pl-3" style={mod?.color ? { borderLeft: `3px solid ${mod.color}` } : { borderLeft: "3px solid #c4b5e3" }}>
-                      <h4 className="text-sm font-bold text-lavender-500 font-hand text-2xl">
-                        {moduleName}
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-lavender-100 rounded text-lavender-500 font-sans">
-                          {moduleItems.length}
-                        </span>
-                      </h4>
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext items={moduleItems.map((t) => t._id)} strategy={verticalListSortingStrategy}>
-                        {moduleItems.map((item) => renderItem(item, effectiveCategory(item) === "lecture_catchup"))}
-                      </SortableContext>
-                    </DndContext>
-                    </div>
-                  );
-                })}
-            </div>
-          ) : filter.groupBy === "date" ? (
-            <div className="overflow-y-auto space-y-4">
-              {dateGroups.map((group) => (
-                <div
-                  key={group.key}
-                  className="space-y-1 pl-3"
-                  style={{ borderLeft: "3px solid #c4b5e3" }}
-                >
-                  <h4 className="text-sm font-bold text-lavender-500 font-hand text-2xl">
-                    {group.label}
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-lavender-100 rounded text-lavender-500 font-sans">
-                      {group.items.length}
-                    </span>
-                  </h4>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
+              <div className="flex items-center gap-2">
+                {myDay.length > 0 ? (
+                  <button
+                    onClick={() => setBacklogOpen((o) => !o)}
+                    aria-expanded={showBacklog}
+                    className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 transition-colors"
                   >
-                    <SortableContext items={group.items.map((t) => t._id)} strategy={verticalListSortingStrategy}>
-                      {group.items.map((item) =>
-                        renderItem(item, effectiveCategory(item) === "lecture_catchup"),
-                      )}
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-y-auto">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext items={backlogSorted.map((t) => t._id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-1">
-                    {backlogSorted.map((item) => renderItem(item))}
+                    <CaretIcon open={showBacklog} />
+                    All tasks
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                      {backlogSorted.length}
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
+                    All tasks
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-200 text-stone-500">
+                      {backlogSorted.length}
+                    </span>
                   </div>
-                </SortableContext>
-              </DndContext>
-            </div>
-          )}
+                )}
+                {showBacklog && activeGroups.length > 1 && (
+                  <button
+                    onClick={toggleAllGroups}
+                    className="ml-auto text-[10px] font-bold uppercase tracking-wider text-stone-400 hover:text-stone-600 px-2 py-1 rounded hover:bg-cream-100 transition-colors"
+                  >
+                    {anyGroupExpanded ? "Collapse all" : "Expand all"}
+                  </button>
+                )}
+              </div>
+              <div className={showBacklog ? "mt-3" : "hidden"}>
+                {showKanban ? (
+                  <div className="min-h-[50vh] grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {categoryColumns.map(renderCategoryColumn)}
+                  </div>
+                ) : filter.groupBy === "module" ? (
+                  renderModuleGroups()
+                ) : filter.groupBy === "date" ? (
+                  renderDateGroups()
+                ) : (
+                  renderFlatList()
+                )}
               </div>
             </div>
           )}
@@ -799,13 +918,8 @@ export function TodosView({
               items={done}
               showCompleted={filter.showCompleted}
               onToggleShow={() => setFilter({ ...filter, showCompleted: !filter.showCompleted })}
-              expandedIds={expanded}
-              onToggleExpand={toggleExpand}
+              onOpen={(todo) => setFocusTodoId(todo._id)}
               onToggleDone={handleToggleDone}
-              onEdit={(t) => { setEditTodo(t); setShowModal(true); }}
-              onDelete={handleDelete}
-              onSubTaskToggle={handleSubTaskToggle}
-              onProgressChange={handleProgressChange}
             />
           </div>
         </div>
@@ -893,11 +1007,12 @@ export function TodosView({
         </div>
       )}
 
+      {focusTodo && !showModal && renderFocusModal(focusTodo)}
+
       {showModal && (
         <TodoModal
           onClose={() => { setShowModal(false); setEditTodo(null); }}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          editTodo={editTodo as any}
+          editTodo={editTodo ?? undefined}
           isGuest={isGuest}
           onGuestCreate={isGuest ? (data: Record<string, unknown>) => {
             guestTodoData.create({
