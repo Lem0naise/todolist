@@ -58,10 +58,11 @@ export function persist() {
     splashLabel: instance.splashLabel || undefined,
   };
   if (instance.mode === "timer") {
-    data.blocks = (instance.cyclePhases as { type: string; duration: number; label: string; taskTopic?: string; taskName?: string }[]).map((p, i) => ({
+    data.blocks = instance.cyclePhases.map((p, i) => ({
       type: p.type === "break" ? (p.label === "Long Break" ? "long-break" : "short-break") : "work",
       duration: p.duration,
       id: i,
+      taskId: p.taskId,
       taskTopic: p.taskTopic,
       taskName: p.taskName,
     }));

@@ -4,6 +4,7 @@ export interface TimerPhase {
   type: "work" | "break";
   duration: number;
   label: string;
+  taskId?: string;
   taskTopic?: string;
   taskName?: string;
 }
@@ -61,6 +62,7 @@ export class PomoTimer {
           type: "work" as const,
           duration: block.duration,
           label: `Work ${workCount}`,
+          taskId: block.taskId,
           taskTopic: block.taskTopic,
           taskName: block.taskName,
         };
@@ -268,10 +270,16 @@ export class PomoTimer {
   }
 
   /** Update task info on a future phase by index */
-  updatePhaseTask(idx: number, taskTopic: string, taskName: string): boolean {
+  updatePhaseTask(
+    idx: number,
+    taskTopic: string,
+    taskName: string,
+    taskId?: string,
+  ): boolean {
     if (idx <= this.currentPhaseIndex || idx >= this.cyclePhases.length) return false;
     const phase = this.cyclePhases[idx];
     if (phase.type !== "work") return false;
+    phase.taskId = taskId || undefined;
     phase.taskTopic = taskTopic;
     phase.taskName = taskName;
     return true;
@@ -304,7 +312,13 @@ export class PomoTimer {
   }
 
   /** Append a new phase to the end of the cycle */
-  appendPhase(type: "work" | "short-break" | "long-break", duration: number, taskTopic?: string, taskName?: string) {
+  appendPhase(
+    type: "work" | "short-break" | "long-break",
+    duration: number,
+    taskTopic?: string,
+    taskName?: string,
+    taskId?: string,
+  ) {
     let workCount = 0;
     for (const p of this.cyclePhases) {
       if (p.type === "work") workCount++;
@@ -313,6 +327,7 @@ export class PomoTimer {
       type: type === "work" ? "work" : "break",
       duration,
       label: type === "work" ? `Work ${workCount + 1}` : type === "long-break" ? "Long Break" : "Short Break",
+      taskId: type === "work" ? taskId : undefined,
       taskTopic: type === "work" ? taskTopic : undefined,
       taskName: type === "work" ? taskName : undefined,
     };

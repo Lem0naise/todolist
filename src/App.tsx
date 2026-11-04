@@ -182,7 +182,10 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             <TodosView onStartPomo={handleStartPomo} />
           )}
           {activeTab === "pomo" && (
-            <PomoView pomoTick={pomoTick} />
+            <PomoView
+              pomoTick={pomoTick}
+              onGoToTodos={() => setActiveTab("todos")}
+            />
           )}
           {activeTab === "settings" && (
             <SettingsView onSignOut={handleSignOut} onNavigateToAuth={onNavigateToAuth} />

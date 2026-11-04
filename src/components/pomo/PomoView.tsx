@@ -1,7 +1,18 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { getTimerInstance, startTimer, startStopwatch, stopTimer, persist, lastCompletedInfo, consumeCycleCompleted, consumeSavedSession, notifySessionSaved } from "./timerState";
+import type { TimerPhase } from "./PomoTimer";
 import {
   loadSettings,
   saveSettings,
@@ -17,7 +28,17 @@ import {
 } from "./usePomoData";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestPomoSessions } from "../../hooks/useGuestPomoSessions";
+import { useGuestTodos } from "../../hooks/useGuestTodos";
+import { getTodayLocal } from "../../lib/date";
 import { FloatingPomo } from "./FloatingPomo";
+import { MyDayPanel, TaskDragChip } from "./MyDayPanel";
+import {
+  assignedSlotLabels,
+  selectMyDayTasks,
+  taskDndCollision,
+  type MyDayTask,
+} from "./myDay";
+import type { Todo } from "../todos/utils";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
 
@@ -48,8 +69,10 @@ function genBlockId() {
 
 export function PomoView({
   pomoTick,
+  onGoToTodos,
 }: {
   pomoTick: number;
+  onGoToTodos?: () => void;
 }) {
   const [view, setView] = useState<PomoView>(() => {
     const timer = getTimerInstance();
@@ -68,8 +91,12 @@ export function PomoView({
   const { sessions, addSession, removeSession, clearAll } = isGuest ? guestPomo : authPomo;
 
   const todosQuery = useQuery(api.todos.list, { includeCompleted: false });
-  const todos: { _id: string; title: string; moduleName?: string; category?: string }[] =
-    isGuest ? [] : (todosQuery ?? []) as { _id: string; title: string; moduleName?: string; category?: string }[];
+  const guestTodoData = useGuestTodos(isGuest);
+  const todos: Todo[] = isGuest
+    ? (guestTodoData.todos as unknown as Todo[]).filter((t) => !t.completed)
+    : ((todosQuery ?? []) as unknown as Todo[]);
+  const todosLoading = !isGuest && todosQuery === undefined;
+  const myDayTasks = selectMyDayTasks(todos, getTodayLocal());
   const modulesQuery = useQuery(api.modules.list);
   const modules: { _id: string; name: string }[] =
     isGuest ? [] : (modulesQuery ?? []) as { _id: string; name: string }[];
@@ -101,7 +128,11 @@ export function PomoView({
   const timer = getTimerInstance();
 
   return (
-    <div className="p-3 max-w-2xl mx-auto pb-24">
+    <div
+      className={`p-3 mx-auto pb-24 ${
+        view === "begin" || view === "timer" ? "max-w-5xl" : "max-w-2xl"
+      }`}
+    >
       <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">
         pomo
       </h2>
@@ -125,6 +156,9 @@ export function PomoView({
           settings={settings}
           todos={todos}
           modules={modules}
+          myDayTasks={myDayTasks}
+          myDayLoading={todosLoading}
+          onGoToTodos={onGoToTodos}
           onStart={(blocks) => {
             startTimer(blocks);
             setView("timer");
@@ -146,9 +180,11 @@ export function PomoView({
         <TimerView
           pomoTick={pomoTick}
           addSession={addSession}
-          todos={todos}
           settings={settings}
           sessions={sessions}
+          myDayTasks={myDayTasks}
+          myDayLoading={todosLoading}
+          onGoToTodos={onGoToTodos}
           onComplete={() => setView("complete")}
           onEnd={() => setView("menu")}
           onNavToStats={() => setView("summary")}
@@ -381,24 +417,37 @@ function BeginView({
   settings,
   todos,
   modules,
+  myDayTasks,
+  myDayLoading,
+  onGoToTodos,
   onStart,
   onCancel,
 }: {
   settings: PomoSettings;
-  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  todos: Todo[];
   modules: { _id: string; name: string }[];
+  myDayTasks: MyDayTask[];
+  myDayLoading: boolean;
+  onGoToTodos?: () => void;
   onStart: (blocks: CycleBlock[]) => void;
   onCancel: () => void;
 }) {
-  const [showCustomize, setShowCustomize] = useState(false);
   const [cycleBlocks, setCycleBlocks] = useState<CycleBlock[]>([
     { type: "work", duration: settings.work, id: genBlockId() },
   ]);
-  const [expandedTask, setExpandedTask] = useState<number | null>(null);
+  const [customBlockId, setCustomBlockId] = useState<number | null>(null);
+  const [armedTaskId, setArmedTaskId] = useState<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  const handleQuickStart = () => {
-    onStart(cycleBlocks);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  const myDayById = new Map(myDayTasks.map((task) => [task._id, task]));
+  const assignedLabels = assignedSlotLabels(
+    cycleBlocks.map((b) => ({ type: b.type, taskId: b.taskId })),
+  );
 
   const addBlock = (type: CycleBlock["type"]) => {
     const dur = type === "work" ? settings.work : type === "short-break" ? settings.shortBreak : settings.longBreak;
@@ -407,18 +456,11 @@ function BeginView({
 
   const removeBlock = (id: number) => {
     setCycleBlocks((prev) => prev.filter((b) => b.id !== id));
-    if (expandedTask === id) setExpandedTask(null);
+    if (customBlockId === id) setCustomBlockId(null);
   };
 
   const updateBlockDuration = (id: number, dur: number) => {
     setCycleBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, duration: dur } : b)));
-  };
-
-  const updateBlockTask = (id: number, taskId: string, taskTopic: string, taskName: string) => {
-    setCycleBlocks((prev) => prev.map((b) =>
-      b.id === id ? { ...b, taskId: taskId || undefined, taskTopic: taskTopic || undefined, taskName: taskName || undefined } : b
-    ));
-    if (!taskId && !taskTopic && !taskName) setExpandedTask(null);
   };
 
   const moveBlock = (id: number, dir: -1 | 1) => {
@@ -433,15 +475,88 @@ function BeginView({
     });
   };
 
-  const getBlockLabel = (b: CycleBlock) =>
-    b.type === "work" ? "Work" : b.type === "short-break" ? "Break" : "Long Break";
+  const assignTaskToBlock = (blockId: number, task: MyDayTask) => {
+    setCycleBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId && b.type === "work"
+          ? {
+              ...b,
+              taskId: task._id,
+              taskTopic: task.moduleName || task.title,
+              taskName: task.title,
+            }
+          : b,
+      ),
+    );
+    setActiveTaskId(null);
+    setArmedTaskId(null);
+  };
 
-  const blockClass = (b: CycleBlock) =>
-    b.type === "work" ? "border-rose-200 bg-rose-50/40" : "border-mint-200 bg-mint-50/40";
+  const clearBlockTask = (blockId: number) => {
+    setCycleBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? { ...b, taskId: undefined, taskTopic: undefined, taskName: undefined }
+          : b,
+      ),
+    );
+  };
+
+  const updateCustomLabel = (blockId: number, topic: string, name: string) => {
+    setCycleBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? {
+              ...b,
+              taskId: undefined,
+              taskTopic: topic || undefined,
+              taskName: name || undefined,
+            }
+          : b,
+      ),
+    );
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const taskId = event.active.data.current?.taskId;
+    if (typeof taskId === "string") setActiveTaskId(taskId);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTaskId(null);
+    const taskId = event.active.data.current?.taskId;
+    const data = event.over?.data.current as
+      | { type?: string; blockId?: number }
+      | undefined;
+    if (
+      typeof taskId !== "string" ||
+      data?.type !== "work-block" ||
+      typeof data.blockId !== "number"
+    ) {
+      return;
+    }
+    const task = myDayById.get(taskId);
+    if (!task) return;
+    assignTaskToBlock(data.blockId, task);
+  };
+
+  const handleArmTask = (taskId: string | null) => {
+    setArmedTaskId(taskId);
+    if (!taskId) setCustomBlockId(null);
+  };
+
+  const handleBlockClick = (block: CycleBlock) => {
+    if (armedTaskId) {
+      const task = myDayById.get(armedTaskId);
+      if (task) assignTaskToBlock(block.id, task);
+      return;
+    }
+    setCustomBlockId((prev) => (prev === block.id ? null : block.id));
+  };
 
   const subjectOptions = [...new Set([
-    ...modules.map(m => m.name),
-    ...todos.map(t => t.moduleName).filter(Boolean) as string[],
+    ...modules.map((m) => m.name),
+    ...todos.map((t) => t.moduleName).filter(Boolean) as string[],
   ])].sort();
 
   const { scheduleTimes, totalMinutes } = useMemo(() => {
@@ -455,170 +570,262 @@ function BeginView({
     return { scheduleTimes: times, totalMinutes: cycleBlocks.reduce((s, b) => s + b.duration, 0) };
   }, [cycleBlocks]);
 
-  const workCount = cycleBlocks.filter(b => b.type === "work").length;
-  const breakCount = cycleBlocks.filter(b => b.type !== "work").length;
+  const workCount = cycleBlocks.filter((b) => b.type === "work").length;
+  const breakCount = cycleBlocks.filter((b) => b.type !== "work").length;
+  const canStart = workCount > 0;
+  const activeTask = activeTaskId ? myDayById.get(activeTaskId) : undefined;
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Start Pomo</h3>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={taskDndCollision}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveTaskId(null)}
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] items-start">
+        <div className="space-y-4">
+          <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Start Pomo</h3>
 
-      {/* Quick start */}
-      <div className="bg-white rounded-xl border border-cream-200 p-5 text-center space-y-4">
-        <p className="text-sm text-stone-500">
-          {showCustomize
-            ? `${workCount} work · ${breakCount} break${totalMinutes ? ` · ${totalMinutes}m` : ""}`
-            : `Start a ${settings.work}-minute work session`}
-        </p>
-        <button
-          onClick={handleQuickStart}
-          className="w-full py-3 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
-        >
-          {showCustomize ? "Start Cycle" : "Start Working"}
-        </button>
-        {showCustomize && (
-          <button onClick={onCancel} className="text-xs font-bold text-stone-400 hover:text-stone-600">
-            Cancel
-          </button>
-        )}
-        <button
-          onClick={() => setShowCustomize(!showCustomize)}
-          className="text-xs font-bold text-stone-400 hover:text-stone-600"
-        >
-          {showCustomize ? "▲ Hide" : "▼ Customize cycle..."}
-        </button>
-      </div>
-
-      {/* Task selector */}
-      <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-1.5">
-        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Pick a task (optional)</p>
-        {todos.length > 0 ? (
-          <div className="flex gap-1.5 flex-wrap">
-            {todos.slice(0, 8).map((t) => {
-              const isSelected = cycleBlocks[0]?.taskId === t._id;
-              return (
-                <button
-                  key={t._id}
-                  onClick={() => {
-                    const blocks = [...cycleBlocks];
-                    if (blocks[0] && blocks[0].type === "work") {
-                      blocks[0] = { ...blocks[0], taskId: t._id, taskTopic: t.moduleName || t.title, taskName: t.title };
-                      setCycleBlocks(blocks);
-                    }
-                  }}
-                  className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${isSelected ? "border-rose-300 bg-rose-100 text-rose-600" : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"}`}
-                >
-                  {t.moduleName && <span className="font-bold text-rose-400">{t.moduleName} — </span>}
-                  {t.title}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-[10px] text-stone-300 italic">No tasks yet — add some in the Tasks tab, or just start working</p>
-        )}
-      </div>
-
-      {/* Customize accordion */}
-      {showCustomize && (
-        <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Blocks</p>
+          <div className="bg-white rounded-xl border border-cream-200 p-5 text-center space-y-3">
+            <p className="text-sm text-stone-500">
+              {workCount} work · {breakCount} break
+              {totalMinutes ? ` · ${totalMinutes}m` : ""}
+            </p>
             <button
-              onClick={() =>
-                setCycleBlocks([
-                  { type: "work", duration: settings.work, id: genBlockId() },
-                  { type: "short-break", duration: settings.shortBreak, id: genBlockId() },
-                  { type: "work", duration: settings.work, id: genBlockId() },
-                  { type: "long-break", duration: settings.longBreak, id: genBlockId() },
-                ])
-              }
-              className="text-[10px] font-bold text-rose-400 hover:text-rose-500 uppercase"
+              onClick={() => onStart(cycleBlocks)}
+              disabled={!canStart}
+              className="w-full py-3 bg-rose-400 hover:bg-rose-500 disabled:bg-stone-200 disabled:hover:bg-stone-200 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
             >
-              Reset Classic
+              Start Cycle
+            </button>
+            <button
+              onClick={onCancel}
+              className="text-xs font-bold text-stone-400 hover:text-stone-600"
+            >
+              Cancel
             </button>
           </div>
 
-          {cycleBlocks.length === 0 ? (
-            <p className="text-sm text-stone-400 text-center py-4">Add blocks to plan your day</p>
-          ) : (
-            <div className="space-y-1">
-              {cycleBlocks.map((b, i) => {
-                const isWork = b.type === "work";
-                const selectedTask = isWork && b.taskId ? todos.find(t => t._id === b.taskId) : null;
-                const hasCustomTask = isWork && !b.taskId && (b.taskTopic || b.taskName);
-                const showTaskPicker = expandedTask === b.id;
-
-                return (
-                  <div key={b.id}>
-                    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${blockClass(b)}`}>
-                      <button onClick={() => moveBlock(b.id, -1)} disabled={i === 0} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8593;</button>
-                      <button onClick={() => moveBlock(b.id, 1)} disabled={i === cycleBlocks.length - 1} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8595;</button>
-                      <span className={`text-xs font-bold min-w-[60px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>{getBlockLabel(b)}</span>
-                      <input type="number" min={1} step={1} value={b.duration} onChange={(e) => updateBlockDuration(b.id, parseFloat(e.target.value) || 1)} className="w-12 px-1.5 py-1 text-xs text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300" />
-                      <span className="text-[10px] text-stone-400">m</span>
-                      {isWork && (
-                        <button onClick={() => setExpandedTask(showTaskPicker ? null : b.id)} className={`flex-1 text-left px-2 py-1 rounded text-xs border truncate transition-colors ${selectedTask || hasCustomTask ? "border-rose-200 bg-rose-50/60 text-rose-600 font-medium" : "border-dashed border-cream-200 text-stone-300 italic hover:border-cream-300"}`}>
-                          {selectedTask ? `${selectedTask.moduleName || ""} ${selectedTask.moduleName ? "—" : ""} ${selectedTask.title}` : hasCustomTask ? `${b.taskTopic || ""} ${b.taskName ? "— " + b.taskName : ""}` : "Tap to assign task..."}
-                        </button>
-                      )}
-                      {!isWork && <div className="flex-1" />}
-                      <button onClick={() => removeBlock(b.id)} className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1">×</button>
-                    </div>
-                    {showTaskPicker && isWork && (
-                      <div className="ml-12 mr-4 mt-1 mb-1 p-2 bg-cream-50 rounded-lg border border-cream-100 space-y-1.5 max-h-44 overflow-y-auto">
-                        {(() => {
-                          const groups: Record<string, typeof todos> = {};
-                          for (const t of todos) { const key = t.moduleName || "General"; if (!groups[key]) groups[key] = []; groups[key].push(t); }
-                          return Object.entries(groups).sort(([a], [b]) => { if (a === "General") return 1; if (b === "General") return -1; return a.localeCompare(b); }).map(([modName, items]) => (
-                            <div key={modName}>
-                              <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1">{modName}</p>
-                              <div className="flex gap-1 flex-wrap">
-                                {items.map((t) => (
-                                  <button key={t._id} onClick={() => { updateBlockTask(b.id, t._id, t.moduleName || t.title, t.title); setExpandedTask(null); }} className={`text-[10px] px-2 py-0.5 rounded font-medium truncate max-w-[180px] border transition-colors ${b.taskId === t._id ? "border-rose-300 bg-rose-100 text-rose-600" : "border-cream-200 bg-white text-stone-500 hover:border-rose-200"}`}>{t.title}</button>
-                                ))}
-                              </div>
-                            </div>
-                          ));
-                        })()}
-                        <div className="flex gap-1.5 pt-1 border-t border-cream-200">
-                          <select value={b.taskTopic || ""} onChange={(e) => updateBlockTask(b.id, b.taskId || "", e.target.value, b.taskName || "")} className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"><option value="">Custom subject...</option>{subjectOptions.map(s => (<option key={s} value={s}>{s}</option>))}</select>
-                          <input type="text" value={b.taskName || ""} onChange={(e) => updateBlockTask(b.id, b.taskId || "", b.taskTopic || "", e.target.value)} placeholder="Custom name" className="flex-1 px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300" />
-                          <button onClick={() => setExpandedTask(null)} className="text-[10px] font-bold text-rose-400 hover:text-rose-500 flex-shrink-0">Done</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          <div className="bg-white rounded-xl border border-cream-200 p-3 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Blocks</p>
+              <button
+                onClick={() =>
+                  setCycleBlocks([
+                    { type: "work", duration: settings.work, id: genBlockId() },
+                    { type: "short-break", duration: settings.shortBreak, id: genBlockId() },
+                    { type: "work", duration: settings.work, id: genBlockId() },
+                    { type: "long-break", duration: settings.longBreak, id: genBlockId() },
+                  ])
+                }
+                className="text-[10px] font-bold text-rose-400 hover:text-rose-500 uppercase"
+              >
+                Reset Classic
+              </button>
             </div>
-          )}
 
-          <div className="flex gap-2 flex-wrap pt-1">
-            <button onClick={() => addBlock("work")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50">+ Work</button>
-            <button onClick={() => addBlock("short-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Break</button>
-            <button onClick={() => addBlock("long-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Long Break</button>
-          </div>
-
-          {cycleBlocks.length > 0 && (
-            <div className="pt-2 border-t border-cream-100">
-              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Schedule ({totalMinutes}m)</p>
-              <div className="space-y-0.5">
-                {scheduleTimes.map(({ block, start, end }, i) => {
-                  const isWork = block.type === "work";
-                  return (
-                    <div key={i} className="flex items-center gap-2 text-[10px]">
-                      <span className="w-10 text-right font-bold text-stone-400 flex-shrink-0">{formatTime(start)}</span>
-                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isWork ? "bg-rose-400" : "bg-mint-400"}`} />
-                      <span className={`font-bold min-w-[50px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>{getBlockLabel(block)}</span>
-                      <span className="text-stone-400">{block.duration}m</span>
-                      <span className="flex-1 text-stone-500 truncate">{block.taskName || (isWork ? <span className="text-stone-300 italic">no task</span> : "")}</span>
-                      <span className="w-10 text-right text-stone-400 flex-shrink-0">{formatTime(end)}</span>
-                    </div>
-                  );
-                })}
+            {cycleBlocks.length === 0 ? (
+              <p className="text-sm text-stone-400 text-center py-4">
+                Add a work block to start planning
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {cycleBlocks.map((b, i) => (
+                  <CycleBlockRow
+                    key={b.id}
+                    block={b}
+                    index={i}
+                    total={cycleBlocks.length}
+                    selectedTask={b.taskId ? myDayById.get(b.taskId) : undefined}
+                    armedTaskId={armedTaskId}
+                    customOpen={customBlockId === b.id}
+                    subjectOptions={subjectOptions}
+                    onMove={moveBlock}
+                    onRemove={removeBlock}
+                    onDuration={updateBlockDuration}
+                    onTaskClick={handleBlockClick}
+                    onClear={clearBlockTask}
+                    onCustomLabel={updateCustomLabel}
+                    onCloseCustom={() => setCustomBlockId(null)}
+                  />
+                ))}
               </div>
+            )}
+
+            <div className="flex gap-2 flex-wrap pt-1">
+              <button onClick={() => addBlock("work")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50">+ Work</button>
+              <button onClick={() => addBlock("short-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Break</button>
+              <button onClick={() => addBlock("long-break")} className="px-2.5 py-1 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50">+ Long Break</button>
             </div>
-          )}
+
+            {cycleBlocks.length > 0 && (
+              <div className="pt-2 border-t border-cream-100">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Schedule ({totalMinutes}m)</p>
+                <div className="space-y-0.5">
+                  {scheduleTimes.map(({ block, start, end }, i) => {
+                    const isWork = block.type === "work";
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-10 text-right font-bold text-stone-400 flex-shrink-0">{formatTime(start)}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isWork ? "bg-rose-400" : "bg-mint-400"}`} />
+                        <span className={`font-bold min-w-[50px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>
+                          {getBlockLabel(block)}
+                        </span>
+                        <span className="text-stone-400">{block.duration}m</span>
+                        <span className="flex-1 text-stone-500 truncate">
+                          {block.taskName || (isWork ? <span className="text-stone-300 italic">no task</span> : "")}
+                        </span>
+                        <span className="w-10 text-right text-stone-400 flex-shrink-0">{formatTime(end)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <MyDayPanel
+          tasks={myDayTasks}
+          assignedLabels={assignedLabels}
+          armedTaskId={armedTaskId}
+          onArmTask={handleArmTask}
+          onGoToTodos={onGoToTodos}
+          loading={myDayLoading}
+          className="lg:sticky lg:top-4"
+        />
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <TaskDragChip task={activeTask} className="shadow-lg ring-2 ring-rose-200 rotate-2" />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function getBlockLabel(b: CycleBlock) {
+  return b.type === "work" ? "Work" : b.type === "short-break" ? "Break" : "Long Break";
+}
+
+function CycleBlockRow({
+  block,
+  index,
+  total,
+  selectedTask,
+  armedTaskId,
+  customOpen,
+  subjectOptions,
+  onMove,
+  onRemove,
+  onDuration,
+  onTaskClick,
+  onClear,
+  onCustomLabel,
+  onCloseCustom,
+}: {
+  block: CycleBlock;
+  index: number;
+  total: number;
+  selectedTask?: MyDayTask;
+  armedTaskId: string | null;
+  customOpen: boolean;
+  subjectOptions: string[];
+  onMove: (id: number, dir: -1 | 1) => void;
+  onRemove: (id: number) => void;
+  onDuration: (id: number, dur: number) => void;
+  onTaskClick: (block: CycleBlock) => void;
+  onClear: (id: number) => void;
+  onCustomLabel: (id: number, topic: string, name: string) => void;
+  onCloseCustom: () => void;
+}) {
+  const isWork = block.type === "work";
+  const { setNodeRef, isOver } = useDroppable({
+    id: `work-block:${block.id}`,
+    data: { type: "work-block", blockId: block.id },
+    disabled: !isWork,
+  });
+
+  const taskLabel = selectedTask
+    ? `${selectedTask.moduleName ? `${selectedTask.moduleName} — ` : ""}${selectedTask.title}`
+    : block.taskName || block.taskTopic || "";
+  const hasTask = !!block.taskId || !!taskLabel;
+
+  return (
+    <div>
+      <div
+        ref={setNodeRef}
+        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-colors ${
+          isWork ? "border-rose-200 bg-rose-50/40" : "border-mint-200 bg-mint-50/40"
+        } ${isOver ? "ring-2 ring-amber-300 border-amber-300 bg-amber-50/60" : ""} ${
+          armedTaskId && isWork ? "ring-1 ring-rose-200" : ""
+        }`}
+      >
+        <button onClick={() => onMove(block.id, -1)} disabled={index === 0} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8593;</button>
+        <button onClick={() => onMove(block.id, 1)} disabled={index === total - 1} className="text-stone-300 hover:text-stone-500 disabled:opacity-20 text-xs leading-none">&#8595;</button>
+        <span className={`text-xs font-bold min-w-[60px] ${isWork ? "text-rose-500" : "text-mint-500"}`}>
+          {getBlockLabel(block)}
+        </span>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={block.duration}
+          onChange={(e) => onDuration(block.id, parseFloat(e.target.value) || 1)}
+          className="w-12 px-1.5 py-1 text-xs text-center border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+        />
+        <span className="text-[10px] text-stone-400">m</span>
+        {isWork ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onTaskClick(block)}
+              className={`flex-1 min-w-0 text-left px-2 py-1 rounded text-xs border truncate transition-colors ${
+                hasTask
+                  ? "border-rose-200 bg-rose-50/60 text-rose-600 font-medium"
+                  : "border-dashed border-cream-200 text-stone-300 italic hover:border-cream-300"
+              }`}
+            >
+              {taskLabel || (isOver ? "Drop to assign" : armedTaskId ? "Tap to assign" : "Drop or tap a task")}
+            </button>
+            {hasTask && (
+              <button
+                onClick={() => onClear(block.id)}
+                title="Clear task"
+                aria-label="Clear task"
+                className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1"
+              >
+                ×
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="flex-1" />
+        )}
+        <button onClick={() => onRemove(block.id)} className="text-stone-300 hover:text-rose-400 text-xs font-bold px-1">×</button>
+      </div>
+      {customOpen && isWork && (
+        <div className="ml-12 mr-4 mt-1 mb-1 p-2 bg-cream-50 rounded-lg border border-cream-100 flex flex-wrap gap-1.5">
+          <select
+            value={block.taskTopic || ""}
+            onChange={(e) => onCustomLabel(block.id, e.target.value, block.taskName || "")}
+            className="flex-1 min-w-[120px] px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+          >
+            <option value="">Custom subject...</option>
+            {subjectOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={block.taskName || ""}
+            onChange={(e) => onCustomLabel(block.id, block.taskTopic || "", e.target.value)}
+            placeholder="Custom name"
+            className="flex-1 min-w-[120px] px-2 py-1 text-[10px] border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300"
+          />
+          <button onClick={onCloseCustom} className="text-[10px] font-bold text-rose-400 hover:text-rose-500">Done</button>
         </div>
       )}
     </div>
@@ -629,9 +836,11 @@ function BeginView({
 function TimerView({
   pomoTick,
   addSession,
-  todos,
   settings,
   sessions,
+  myDayTasks,
+  myDayLoading,
+  onGoToTodos,
   onComplete,
   onEnd,
   onNavToStats,
@@ -641,9 +850,11 @@ function TimerView({
 }: {
   pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
-  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
   settings: PomoSettings;
   sessions: PomoSession[];
+  myDayTasks: MyDayTask[];
+  myDayLoading: boolean;
+  onGoToTodos?: () => void;
   onComplete: () => void;
   onEnd: () => void;
   onNavToStats: () => void;
@@ -654,6 +865,16 @@ function TimerView({
   const timer = getTimerInstance();
   const prevPhaseRef = useRef<number | null>(null);
   const [, forceRender] = useState(0);
+  const [armedTaskId, setArmedTaskId] = useState<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  const myDayById = new Map(myDayTasks.map((task) => [task._id, task]));
+  const assignedLabels = timer ? assignedSlotLabels(timer.cyclePhases) : {};
 
   useEffect(() => {
     // Check for cycle completion from App tick (timer instance already nulled)
@@ -682,6 +903,44 @@ function TimerView({
       </div>
     );
   }
+
+  const assignPhaseTask = (phaseIndex: number, taskId: string) => {
+    const task = myDayById.get(taskId);
+    if (!task) return;
+    if (!timer.updatePhaseTask(phaseIndex, task.moduleName || task.title, task.title, task._id)) return;
+    persist();
+    setArmedTaskId(null);
+    forceRender((n) => n + 1);
+  };
+
+  const clearPhaseTask = (phaseIndex: number) => {
+    if (!timer.updatePhaseTask(phaseIndex, "", "")) return;
+    persist();
+    forceRender((n) => n + 1);
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const taskId = event.active.data.current?.taskId;
+    if (typeof taskId === "string") setActiveTaskId(taskId);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTaskId(null);
+    const taskId = event.active.data.current?.taskId;
+    const data = event.over?.data.current as
+      | { type?: string; phaseIndex?: number }
+      | undefined;
+    if (
+      typeof taskId !== "string" ||
+      data?.type !== "phase" ||
+      typeof data.phaseIndex !== "number"
+    ) {
+      return;
+    }
+    assignPhaseTask(data.phaseIndex, taskId);
+  };
+
+  const activeTask = activeTaskId ? myDayById.get(activeTaskId) : undefined;
 
   const handleEndCycle = () => {
     if (!timer.isRunning) { stopTimer(); onEnd(); return; }
@@ -741,7 +1000,6 @@ function TimerView({
   };
 
   const handleAddBlock = (type: "work" | "short-break" | "long-break") => {
-    if (!timer) return;
     const dur = type === "work" ? settings.work : type === "short-break" ? settings.shortBreak : settings.longBreak;
     timer.appendPhase(type, dur);
     persist();
@@ -749,7 +1007,6 @@ function TimerView({
   };
 
   const handleRemoveFuture = (idx: number) => {
-    if (!timer) return;
     timer.removeFuturePhase(idx);
     persist();
     forceRender(n => n + 1);
@@ -781,101 +1038,133 @@ function TimerView({
   const textColor = isBreak ? "text-mint-500" : "text-rose-500";
 
   return (
-    <div className="text-center space-y-6">
-      {/* Topic */}
-      <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
-        {isBreak ? (
-          timer.phase.label.includes("Long") ? "Take a Long Break!" : "Take a Short Break!"
-        ) : (
-          <>{timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.topic}</>
-        )}
-      </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={taskDndCollision}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveTaskId(null)}
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] items-start">
+        <div className="text-center space-y-6">
+          {/* Topic */}
+          <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
+            {isBreak ? (
+              timer.phase.label.includes("Long") ? "Take a Long Break!" : "Take a Short Break!"
+            ) : (
+              <>{timer.taskName && timer.topic !== timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.taskName || timer.topic}</>
+            )}
+          </div>
 
-      {/* Timer ring */}
-      <div className="relative w-80 h-80 mx-auto flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
-          <circle
-            cx="140" cy="140" r={RING_RADIUS}
-            fill="none"
-            stroke="#e8e2d9"
-            strokeWidth="10"
+          {/* Timer ring */}
+          <div className="relative w-80 h-80 mx-auto flex items-center justify-center">
+            <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
+              <circle
+                cx="140" cy="140" r={RING_RADIUS}
+                fill="none"
+                stroke="#e8e2d9"
+                strokeWidth="10"
+              />
+              <circle
+                cx="140" cy="140" r={RING_RADIUS}
+                fill="none"
+                stroke={ringColor}
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={CIRCUMFERENCE}
+                strokeDashoffset={offset}
+                className="transition-all duration-300"
+              />
+            </svg>
+            <span className={`text-6xl font-bold font-pomo relative z-10 ${textColor}`}>
+              {displayText}
+            </span>
+          </div>
+
+          {/* Phase label */}
+          <p className={`text-sm font-bold uppercase tracking-wider ${isBreak ? "text-mint-500" : "text-rose-500"}`}>
+            {timer.phase.label} — {isBreak ? "Break" : "Work"}
+          </p>
+
+          {/* Actions */}
+          <div className="flex gap-2 justify-center flex-wrap">
+            <button
+              onClick={togglePause}
+              className="px-5 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+            >
+              {timer.isPaused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={handleTakeBreak}
+              className="px-5 py-2.5 bg-mint-100 hover:bg-mint-200 text-mint-600 font-bold rounded-xl text-sm transition-colors border border-mint-200"
+            >
+              {timer.phase?.type === "break" ? "Skip Break" : "Take Break"}
+            </button>
+          </div>
+
+          {/* Future phases timeline */}
+          <PhaseTimeline
+            timer={timer}
+            armedTaskId={armedTaskId}
+            onRemoveFuture={handleRemoveFuture}
+            onAssignTask={assignPhaseTask}
+            onClearTask={clearPhaseTask}
           />
-          <circle
-            cx="140" cy="140" r={RING_RADIUS}
-            fill="none"
-            stroke={ringColor}
-            strokeWidth="10"
-            strokeLinecap="round"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={offset}
-            className="transition-all duration-300"
-          />
-        </svg>
-        <span className={`text-6xl font-bold font-pomo relative z-10 ${textColor}`}>
-          {displayText}
-        </span>
+
+          {/* Inline block management */}
+          <div className="flex gap-2 justify-center flex-wrap">
+            <button onClick={() => handleAddBlock("work")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50 transition-colors">
+              + Work
+            </button>
+            <button onClick={() => handleAddBlock("short-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
+              + Break
+            </button>
+            <button onClick={() => handleAddBlock("long-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
+              + Long Break
+            </button>
+          </div>
+
+          {/* Today's session log */}
+          <SessionLog sessions={sessions} />
+
+          {/* Navigation */}
+          <div className="flex gap-2 justify-center pt-1">
+            <button onClick={onNavToStats} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+              Stats
+            </button>
+            <button onClick={onNavToLog} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+              Log
+            </button>
+            <button onClick={onNavToMenu} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
+              Menu
+            </button>
+            <span className="text-stone-200 text-[10px]">|</span>
+            <button
+              onClick={handleEndCycle}
+              className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+            >
+              Finish
+            </button>
+          </div>
+        </div>
+
+        <MyDayPanel
+          tasks={myDayTasks}
+          assignedLabels={assignedLabels}
+          armedTaskId={armedTaskId}
+          onArmTask={setArmedTaskId}
+          onGoToTodos={onGoToTodos}
+          loading={myDayLoading}
+          className="lg:sticky lg:top-4"
+        />
       </div>
 
-      {/* Phase label */}
-      <p className={`text-sm font-bold uppercase tracking-wider ${isBreak ? "text-mint-500" : "text-rose-500"}`}>
-        {timer.phase.label} — {isBreak ? "Break" : "Work"}
-      </p>
-
-      {/* Actions */}
-      <div className="flex gap-2 justify-center flex-wrap">
-        <button
-          onClick={togglePause}
-          className="px-5 py-2.5 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
-        >
-          {timer.isPaused ? "Resume" : "Pause"}
-        </button>
-        <button
-          onClick={handleTakeBreak}
-          className="px-5 py-2.5 bg-mint-100 hover:bg-mint-200 text-mint-600 font-bold rounded-xl text-sm transition-colors border border-mint-200"
-        >
-          {timer.phase?.type === "break" ? "Skip Break" : "Take Break"}
-        </button>
-      </div>
-
-      {/* Future phases timeline */}
-      <PhaseTimeline timer={timer} todos={todos} onRemoveFuture={handleRemoveFuture} />
-
-      {/* Inline block management */}
-      <div className="flex gap-2 justify-center flex-wrap">
-        <button onClick={() => handleAddBlock("work")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-rose-300 text-rose-400 rounded-lg hover:bg-rose-50 transition-colors">
-          + Work
-        </button>
-        <button onClick={() => handleAddBlock("short-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
-          + Break
-        </button>
-        <button onClick={() => handleAddBlock("long-break")} className="px-3 py-1.5 text-[10px] font-bold border-2 border-dashed border-mint-300 text-mint-500 rounded-lg hover:bg-mint-50 transition-colors">
-          + Long Break
-        </button>
-      </div>
-
-      {/* Today's session log */}
-      <SessionLog sessions={sessions} />
-
-      {/* Navigation */}
-      <div className="flex gap-2 justify-center pt-1">
-        <button onClick={onNavToStats} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
-          Stats
-        </button>
-        <button onClick={onNavToLog} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
-          Log
-        </button>
-        <button onClick={onNavToMenu} className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-stone-600 hover:bg-cream-100 rounded-lg transition-colors">
-          Menu
-        </button>
-        <span className="text-stone-200 text-[10px]">|</span>
-        <button
-          onClick={handleEndCycle}
-          className="px-3 py-1.5 text-[10px] font-bold text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-        >
-          Finish
-        </button>
-      </div>
-    </div>
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <TaskDragChip task={activeTask} className="shadow-lg ring-2 ring-rose-200 rotate-2" />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -926,12 +1215,16 @@ function SessionLog({ sessions }: { sessions: PomoSession[] }) {
 
 function PhaseTimeline({
   timer,
-  todos,
+  armedTaskId,
   onRemoveFuture,
+  onAssignTask,
+  onClearTask,
 }: {
   timer: ReturnType<typeof getTimerInstance>;
-  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  armedTaskId: string | null;
   onRemoveFuture: (idx: number) => void;
+  onAssignTask: (phaseIndex: number, taskId: string) => void;
+  onClearTask: (phaseIndex: number) => void;
 }) {
   const dragRef = useRef<{
     type: "resize-right" | "resize-left" | "reorder";
@@ -950,12 +1243,21 @@ function PhaseTimeline({
 
   const PX_PER_MIN = 8;
 
+  const workOrdinalAt = (idx: number) =>
+    t.cyclePhases.slice(0, idx + 1).filter((p) => p.type === "work").length;
+
   const phases = future.map((phase, relativeIdx) => {
     const prevDurations = future.slice(0, relativeIdx).reduce((s, p) => s + p.duration, 0);
     const idx = t.currentPhaseIndex + 1 + relativeIdx;
     const baseMs = t.endTime?.getTime() ?? new Date().getTime();
     const blockEndMs = baseMs + (prevDurations + phase.duration) * 60 * 1000;
-    return { phase, idx, relativeIdx, endTime: new Date(blockEndMs) };
+    return {
+      phase,
+      idx,
+      relativeIdx,
+      endTime: new Date(blockEndMs),
+      workLabel: `W${workOrdinalAt(idx)}`,
+    };
   });
 
   function handleMouseMove(e: MouseEvent) {
@@ -1029,99 +1331,143 @@ function PhaseTimeline({
         Upcoming{future.length === 0 ? " — nothing scheduled" : ""}
       </p>
       <div className="flex gap-2 flex-wrap justify-center">
-        {phases.map(({ phase, idx, relativeIdx, endTime }) => {
-          const isWork = phase.type === "work";
-          const bg = isWork ? "bg-rose-50 border-rose-200" : "bg-mint-50 border-mint-200";
-          const textColor = isWork ? "text-rose-500" : "text-mint-500";
-          const isDragging = dragOverIdx === relativeIdx;
+        {phases.map(({ phase, idx, relativeIdx, endTime, workLabel }) => (
+          <FuturePhaseCard
+            key={idx}
+            phase={phase}
+            idx={idx}
+            relativeIdx={relativeIdx}
+            endTime={endTime}
+            workLabel={workLabel}
+            armedTaskId={armedTaskId}
+            isReorderTarget={dragOverIdx === relativeIdx}
+            onReorderStart={handleMouseDown}
+            onRemove={onRemoveFuture}
+            onAssign={onAssignTask}
+            onClear={onClearTask}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          return (
-            <div
-              key={idx}
-              className={`relative rounded-lg border px-3 py-2 flex flex-col items-center min-w-[80px] cursor-grab active:cursor-grabbing select-none transition-colors ${bg} ${
-                isDragging ? "ring-2 ring-lavender-400 z-10" : ""
-              }`}
-              onMouseDown={(e) => handleMouseDown(e, "reorder", idx, relativeIdx)}
-            >
-              {/* Remove button */}
+function FuturePhaseCard({
+  phase,
+  idx,
+  relativeIdx,
+  endTime,
+  workLabel,
+  armedTaskId,
+  isReorderTarget,
+  onReorderStart,
+  onRemove,
+  onAssign,
+  onClear,
+}: {
+  phase: TimerPhase;
+  idx: number;
+  relativeIdx: number;
+  endTime: Date;
+  workLabel: string;
+  armedTaskId: string | null;
+  isReorderTarget: boolean;
+  onReorderStart: (
+    e: React.MouseEvent,
+    type: "resize-right" | "resize-left" | "reorder",
+    phaseIdx: number,
+    relativeIdx: number,
+  ) => void;
+  onRemove: (idx: number) => void;
+  onAssign: (phaseIndex: number, taskId: string) => void;
+  onClear: (phaseIndex: number) => void;
+}) {
+  const isWork = phase.type === "work";
+  const { setNodeRef, isOver } = useDroppable({
+    id: `phase:${idx}`,
+    data: { type: "phase", phaseIndex: idx },
+    disabled: !isWork,
+  });
+
+  const bg = isWork ? "bg-rose-50 border-rose-200" : "bg-mint-50 border-mint-200";
+  const textColor = isWork ? "text-rose-500" : "text-mint-500";
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isWork || !armedTaskId) return;
+    if ((e.target as HTMLElement).closest("[data-no-assign]")) return;
+    onAssign(idx, armedTaskId);
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`relative rounded-lg border px-3 py-2 flex flex-col items-center min-w-[80px] cursor-grab active:cursor-grabbing select-none transition-colors ${bg} ${
+        isReorderTarget ? "ring-2 ring-lavender-400 z-10" : ""
+      } ${isOver ? "ring-2 ring-amber-300 border-amber-300 bg-amber-50" : ""} ${
+        armedTaskId && isWork && !isOver ? "ring-1 ring-rose-200" : ""
+      }`}
+      onMouseDown={(e) => onReorderStart(e, "reorder", idx, relativeIdx)}
+      onClick={handleClick}
+    >
+      {/* Remove button */}
+      <button
+        data-no-assign
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onRemove(idx); }}
+        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-400 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] leading-none shadow-sm"
+      >
+        ×
+      </button>
+
+      {/* Resize handles */}
+      <div
+        data-no-assign
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-l-lg"
+        onMouseDown={(e) => onReorderStart(e, "resize-left", idx, relativeIdx)}
+      />
+      <div
+        data-no-assign
+        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-r-lg"
+        onMouseDown={(e) => onReorderStart(e, "resize-right", idx, relativeIdx)}
+      />
+
+      <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor}`}>
+        {isWork ? workLabel : phase.label}
+      </span>
+      <span className="text-[11px] font-bold text-stone-500">
+        {phase.duration}m
+      </span>
+      {isWork && (
+        <div className="flex items-center gap-0.5 max-w-[110px]">
+          {phase.taskName ? (
+            <>
+              <span
+                className="text-[9px] text-rose-400 truncate leading-tight"
+                title={phase.taskName}
+              >
+                {phase.taskName}
+              </span>
               <button
-                onClick={(e) => { e.stopPropagation(); onRemoveFuture(idx); }}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-400 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] leading-none shadow-sm"
+                data-no-assign
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onClear(idx); }}
+                title="Clear task"
+                aria-label="Clear task"
+                className="flex-shrink-0 text-[10px] text-stone-300 hover:text-rose-500 leading-none"
               >
                 ×
               </button>
-
-              {/* Resize handles */}
-              <div
-                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-l-lg"
-                onMouseDown={(e) => handleMouseDown(e, "resize-left", idx, relativeIdx)}
-              />
-              <div
-                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-black/10 rounded-r-lg"
-                onMouseDown={(e) => handleMouseDown(e, "resize-right", idx, relativeIdx)}
-              />
-
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor}`}>
-                {isWork ? `W${relativeIdx + 1}` : phase.label}
-              </span>
-              <span className="text-[11px] font-bold text-stone-500">
-                {phase.duration}m
-              </span>
-              {phase.taskName && isWork && (
-                <span className="text-[9px] text-rose-400 truncate max-w-[80px] leading-tight">
-                  {phase.taskName}
-                </span>
-              )}
-              <span className="text-[9px] text-stone-400 mt-0.5">
-                {formatTime(endTime)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Task assigners for work blocks */}
-      <div className="flex gap-2 flex-wrap justify-center mt-2">
-        {phases.filter(p => p.phase.type === "work").map(({ phase, idx, relativeIdx }) => (
-          <div key={idx} className="flex items-center gap-1">
-            <span className="text-[9px] font-bold text-rose-400">W{relativeIdx + 1}</span>
-            <select
-              value={phase.taskTopic || ""}
-              onChange={(e) => {
-                const tid = e.target.value;
-                if (tid) {
-                  const td = todos.find(t => t._id === tid);
-                  t.updatePhaseTask(idx, td?.moduleName || td?.title || "", td?.title || "");
-                } else {
-                  t.updatePhaseTask(idx, "", "");
-                }
-              }}
-              className="text-[9px] px-1.5 py-0.5 border border-cream-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-rose-300 max-w-[150px] text-stone-600 truncate"
-            >
-              <option value="">— task —</option>
-              {(() => {
-                const groups: Record<string, typeof todos> = {};
-                for (const td of todos) {
-                  const key = td.moduleName || "General";
-                  if (!groups[key]) groups[key] = [];
-                  groups[key].push(td);
-                }
-                return Object.entries(groups).sort(([a], [b]) => {
-                  if (a === "General") return 1;
-                  if (b === "General") return -1;
-                  return a.localeCompare(b);
-                }).map(([modName, items]) => (
-                  <optgroup key={modName} label={modName}>
-                    {items.map(td => (
-                      <option key={td._id} value={td._id}>{td.title}</option>
-                    ))}
-                  </optgroup>
-                ));
-              })()}
-            </select>
-          </div>
-        ))}
-      </div>
+            </>
+          ) : (
+            <span className="text-[9px] text-stone-300 italic leading-tight">
+              {isOver ? "drop to assign" : armedTaskId ? "tap to assign" : "no task"}
+            </span>
+          )}
+        </div>
+      )}
+      <span className="text-[9px] text-stone-400 mt-0.5">
+        {formatTime(endTime)}
+      </span>
     </div>
   );
 }
