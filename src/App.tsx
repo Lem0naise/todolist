@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
@@ -24,6 +24,11 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
   const { signOut } = useAuthActions();
   const [pomoTick, setPomoTick] = useState(0);
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
+  const [pomoImmersive, setPomoImmersive] = useState(false);
+  const handlePomoImmersive = useCallback((value: boolean) => {
+    setPomoImmersive(value);
+  }, []);
+  const hideBottomNav = activeTab === "pomo" && pomoImmersive;
 
   const todos = useQuery(api.todos.list, { includeCompleted: false });
   const todoBadge = todos?.length ?? 0;
@@ -146,6 +151,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           activeTab={activeTab}
           onTabChange={setActiveTab}
           todoBadge={todoBadge}
+          hideBottomNav={hideBottomNav}
         />
 
         {isGuest && !guestBannerDismissed && (
@@ -165,7 +171,11 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto sm:pl-14 pb-20 sm:pb-0 relative">
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto sm:pl-14 relative ${
+            hideBottomNav ? "" : "pb-20 sm:pb-0"
+          }`}
+        >
           {activeTab === "combined" && (
             <CombinedView
               onGoToTodos={() => setActiveTab("todos")}
@@ -185,6 +195,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             <PomoView
               pomoTick={pomoTick}
               onGoToTodos={() => setActiveTab("todos")}
+              onImmersiveChange={handlePomoImmersive}
             />
           )}
           {activeTab === "settings" && (

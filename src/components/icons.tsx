@@ -6,6 +6,22 @@ export function PlayIcon({ className = "w-3.5 h-3.5" }: { className?: string }) 
   );
 }
 
+export function PauseIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+    </svg>
+  );
+}
+
+export function StopIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
 export function SunIcon({
   filled,
   className = "w-3.5 h-3.5",

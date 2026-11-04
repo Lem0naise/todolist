@@ -6,9 +6,10 @@ interface Props {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   todoBadge?: number;
+  hideBottomNav?: boolean;
 }
 
-export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
+export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }: Props) {
 
   const tabs: { id: Tab; label: string; icon: ReactNode; shortcut: string }[] = [
     {
@@ -110,7 +111,11 @@ export function Nav({ activeTab, onTabChange, todoBadge }: Props) {
         <div className="flex-1" />
       </nav>
 
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-cream border-t border-cream-200">
+      <nav
+        className={`sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-cream border-t border-cream-200 ${
+          hideBottomNav ? "hidden" : ""
+        }`}
+      >
         <div className="flex">
           {tabs.map((tab) => (
             <button

@@ -165,16 +165,16 @@ export function SplashScreen({ onSkip }: { onSkip: () => void }) {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 text-center select-none">
+      <div className="relative z-10 text-center select-none px-4 max-w-full">
         <p className="text-[10px] font-bold text-white/80 uppercase tracking-[0.3em] mb-3">
           {isBreak ? "Work done!" : "Break done!"}
         </p>
-        <h1 className={`text-7xl font-bold font-hand ${textColor} drop-shadow-lg`}
+        <h1 className={`text-[clamp(1.5rem,11vw,4.5rem)] font-bold font-hand ${textColor} drop-shadow-lg`}
           style={{ textShadow: "0 4px 20px rgba(0,0,0,0.15)" }}
         >
           {timer.splashLabel === "BREAK TIME" ? "Take a Break!" : "Get to Work!"}
         </h1>
-        <div className="mt-8 text-5xl font-bold font-pomo text-white drop-shadow-lg">
+        <div className="mt-8 text-[clamp(1.5rem,9vw,3rem)] font-bold font-pomo text-white drop-shadow-lg">
           {countdown}
         </div>
         <p className="mt-6 text-xs font-bold text-white/60 uppercase tracking-wider">

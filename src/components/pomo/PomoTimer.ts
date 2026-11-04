@@ -208,6 +208,20 @@ export class PomoTimer {
     return Math.min(100, Math.round((done / total) * 100 * 10) / 10);
   }
 
+  /**
+   * Projected end of the current phase. While paused the clock is frozen, so
+   * the wall-clock finish time keeps moving by the elapsed pause.
+   */
+  getPhaseEndTime(): Date | null {
+    if (!this.endTime) return null;
+    if (this.isPaused && this.pausedTime) {
+      return new Date(
+        this.endTime.getTime() + (Date.now() - this.pausedTime.getTime()),
+      );
+    }
+    return this.endTime;
+  }
+
   isComplete(): boolean {
     if (this.mode === "stopwatch") return false;
     return this.isRunning && !this.isPaused && this.getTimeLeft() === 0;

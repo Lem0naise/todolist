@@ -30,6 +30,7 @@ import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestPomoSessions } from "../../hooks/useGuestPomoSessions";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
 import { getTodayLocal } from "../../lib/date";
+import { PauseIcon, PlayIcon, StopIcon } from "../icons";
 import { FloatingPomo } from "./FloatingPomo";
 import { MyDayPanel, TaskDragChip } from "./MyDayPanel";
 import {
@@ -38,6 +39,7 @@ import {
   taskDndCollision,
   type MyDayTask,
 } from "./myDay";
+import { usePomoDensity, type PomoDensity } from "./usePomoDensity";
 import type { Todo } from "../todos/utils";
 
 type PomoView = "menu" | "begin" | "timer" | "complete" | "log" | "summary";
@@ -70,9 +72,11 @@ function genBlockId() {
 export function PomoView({
   pomoTick,
   onGoToTodos,
+  onImmersiveChange,
 }: {
   pomoTick: number;
   onGoToTodos?: () => void;
+  onImmersiveChange?: (immersive: boolean) => void;
 }) {
   const [view, setView] = useState<PomoView>(() => {
     const timer = getTimerInstance();
@@ -84,6 +88,9 @@ export function PomoView({
   });
   const [settings, setSettings] = useState<PomoSettings>(loadSettings);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const density = usePomoDensity();
+  const denseTimer = view === "timer" && density !== "full";
+  const immersive = view === "timer" && density === "micro";
 
   const { isGuest } = useGuest();
   const authPomo = usePomoData();
@@ -125,17 +132,30 @@ export function PomoView({
     };
   }, []);
 
+  useEffect(() => {
+    onImmersiveChange?.(immersive);
+  }, [immersive, onImmersiveChange]);
+
+  // Restore the app chrome if the Pomo tab unmounts while immersive.
+  useEffect(() => {
+    return () => onImmersiveChange?.(false);
+  }, [onImmersiveChange]);
+
   const timer = getTimerInstance();
+  const widthClass = view === "begin" || view === "timer" ? "max-w-5xl" : "max-w-2xl";
+  const rootClass = denseTimer
+    ? `mx-auto flex min-h-full w-full flex-col overflow-x-hidden ${
+        density === "micro" ? "p-1 pb-2" : "p-2 pb-4"
+      }`
+    : `p-3 mx-auto pb-24 ${widthClass}`;
 
   return (
-    <div
-      className={`p-3 mx-auto pb-24 ${
-        view === "begin" || view === "timer" ? "max-w-5xl" : "max-w-2xl"
-      }`}
-    >
-      <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">
-        pomo
-      </h2>
+    <div className={rootClass}>
+      {!denseTimer && (
+        <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">
+          pomo
+        </h2>
+      )}
 
       {view === "menu" && (
         <MenuView
@@ -168,7 +188,9 @@ export function PomoView({
       )}
       {view === "begin" && pomoMode === "stopwatch" && (
         <StopwatchBeginView
-          todos={todos}
+          myDayTasks={myDayTasks}
+          myDayLoading={todosLoading}
+          onGoToTodos={onGoToTodos}
           onStart={(topic, taskName) => {
             startStopwatch(topic, taskName);
             setView("timer");
@@ -178,6 +200,8 @@ export function PomoView({
       )}
       {view === "timer" && pomoMode === "timer" && (
         <TimerView
+          key={denseTimer ? "dense" : "full"}
+          density={density}
           pomoTick={pomoTick}
           addSession={addSession}
           settings={settings}
@@ -195,9 +219,12 @@ export function PomoView({
       )}
       {view === "timer" && pomoMode === "stopwatch" && (
         <StopwatchView
+          density={density}
           pomoTick={pomoTick}
           addSession={addSession}
-          todos={todos}
+          myDayTasks={myDayTasks}
+          myDayLoading={todosLoading}
+          onGoToTodos={onGoToTodos}
           onEnd={() => setView("menu")}
           showToast={showToast}
         />
@@ -847,6 +874,7 @@ function TimerView({
   onNavToLog,
   onNavToMenu,
   showToast,
+  density,
 }: {
   pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
@@ -861,6 +889,7 @@ function TimerView({
   onNavToLog: () => void;
   onNavToMenu: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
+  density: PomoDensity;
 }) {
   const timer = getTimerInstance();
   const prevPhaseRef = useRef<number | null>(null);
@@ -1025,8 +1054,14 @@ function TimerView({
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
   const progress = timer.getProgress();
-  const offset = CIRCUMFERENCE - (progress / 100) * CIRCUMFERENCE;
   const isBreak = timer.phase.type === "break";
+  const finishEnd = timer.getPhaseEndTime();
+  const finishLabel = finishEnd ? formatTime(finishEnd) : null;
+  const taskLabel = isBreak
+    ? timer.phase.label
+    : timer.taskName && timer.topic !== timer.taskName
+      ? `${timer.topic} — ${timer.taskName}`
+      : timer.taskName || timer.topic || "Work";
 
   const displayText = timer.isPaused
     ? "Paused"
@@ -1036,6 +1071,25 @@ function TimerView({
 
   const ringColor = isBreak ? "#98d9c2" : "#f4a7b9";
   const textColor = isBreak ? "text-mint-500" : "text-rose-500";
+
+  if (density !== "full") {
+    return (
+      <DenseTimerView
+        density={density}
+        isBreak={isBreak}
+        isPaused={timer.isPaused}
+        taskLabel={taskLabel}
+        finishLabel={finishLabel}
+        displayText={displayText}
+        progress={progress}
+        ringColor={ringColor}
+        textColor={textColor}
+        onTogglePause={togglePause}
+        onTakeBreak={handleTakeBreak}
+        onFinish={handleEndCycle}
+      />
+    );
+  }
 
   return (
     <DndContext
@@ -1048,43 +1102,35 @@ function TimerView({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] items-start">
         <div className="text-center space-y-6">
           {/* Topic */}
-          <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
+          <div className="text-lg font-bold text-stone-600 font-hand text-2xl" title={taskLabel}>
             {isBreak ? (
               timer.phase.label.includes("Long") ? "Take a Long Break!" : "Take a Short Break!"
             ) : (
-              <>{timer.taskName && timer.topic !== timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.taskName || timer.topic}</>
+              <>{taskLabel}</>
             )}
           </div>
 
           {/* Timer ring */}
-          <div className="relative w-80 h-80 mx-auto flex items-center justify-center">
-            <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
-              <circle
-                cx="140" cy="140" r={RING_RADIUS}
-                fill="none"
-                stroke="#e8e2d9"
-                strokeWidth="10"
-              />
-              <circle
-                cx="140" cy="140" r={RING_RADIUS}
-                fill="none"
-                stroke={ringColor}
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={offset}
-                className="transition-all duration-300"
-              />
-            </svg>
-            <span className={`text-6xl font-bold font-pomo relative z-10 ${textColor}`}>
-              {displayText}
-            </span>
-          </div>
+          <TimerDial
+            progress={progress}
+            ringColor={ringColor}
+            textColor={textColor}
+            text={displayText}
+            sizeClass="w-80 h-80"
+            textClass="text-6xl"
+          />
 
           {/* Phase label */}
-          <p className={`text-sm font-bold uppercase tracking-wider ${isBreak ? "text-mint-500" : "text-rose-500"}`}>
-            {timer.phase.label} — {isBreak ? "Break" : "Work"}
-          </p>
+          <div>
+            <p className={`text-sm font-bold uppercase tracking-wider ${isBreak ? "text-mint-500" : "text-rose-500"}`}>
+              {timer.phase.label} — {isBreak ? "Break" : "Work"}
+            </p>
+            {finishLabel && (
+              <p className="text-[10px] font-bold text-stone-400 mt-1">
+                ends at {finishLabel}
+              </p>
+            )}
+          </div>
 
           {/* Actions */}
           <div className="flex gap-2 justify-center flex-wrap">
@@ -1165,6 +1211,155 @@ function TimerView({
         ) : null}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+function TimerDial({
+  progress,
+  ringColor,
+  textColor,
+  text,
+  sizeClass,
+  textClass,
+}: {
+  progress: number;
+  ringColor: string;
+  textColor: string;
+  text: string;
+  sizeClass: string;
+  textClass: string;
+}) {
+  const offset = CIRCUMFERENCE - (progress / 100) * CIRCUMFERENCE;
+
+  return (
+    <div className={`relative ${sizeClass} flex-shrink-0 mx-auto flex items-center justify-center`}>
+      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 280 280">
+        <circle
+          cx="140" cy="140" r={RING_RADIUS}
+          fill="none"
+          stroke="#e8e2d9"
+          strokeWidth="10"
+        />
+        <circle
+          cx="140" cy="140" r={RING_RADIUS}
+          fill="none"
+          stroke={ringColor}
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          className="transition-all duration-300"
+        />
+      </svg>
+      <span className={`${textClass} font-bold font-pomo relative z-10 ${textColor}`}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function DenseTimerView({
+  density,
+  isBreak,
+  isPaused,
+  taskLabel,
+  finishLabel,
+  displayText,
+  progress,
+  ringColor,
+  textColor,
+  onTogglePause,
+  onTakeBreak,
+  onFinish,
+}: {
+  density: Exclude<PomoDensity, "full">;
+  isBreak: boolean;
+  isPaused: boolean;
+  taskLabel: string;
+  finishLabel: string | null;
+  displayText: string;
+  progress: number;
+  ringColor: string;
+  textColor: string;
+  onTogglePause: () => void;
+  onTakeBreak: () => void;
+  onFinish: () => void;
+}) {
+  const dial =
+    density === "compact"
+      ? { size: "w-[min(14rem,78vw)] h-[min(14rem,78vw)]", text: "text-5xl" }
+      : density === "tiny"
+        ? { size: "w-[min(11rem,72vw)] h-[min(11rem,72vw)]", text: "text-4xl" }
+        : { size: "w-[min(8rem,68vw)] h-[min(8rem,68vw)]", text: "text-3xl" };
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+      {density !== "micro" && (
+        <p
+          className="max-w-full truncate px-1 text-lg font-bold text-stone-600 font-hand"
+          title={taskLabel}
+        >
+          {taskLabel}
+        </p>
+      )}
+
+      <TimerDial
+        progress={progress}
+        ringColor={ringColor}
+        textColor={textColor}
+        text={displayText}
+        sizeClass={dial.size}
+        textClass={dial.text}
+      />
+
+      {density !== "micro" && finishLabel && (
+        <p className="text-[11px] font-bold text-stone-400">
+          ends at {finishLabel}
+        </p>
+      )}
+
+      {density === "compact" ? (
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <button
+            onClick={onTogglePause}
+            className="px-3 py-1.5 bg-rose-400 hover:bg-rose-500 text-white text-[11px] font-bold rounded-lg transition-colors"
+          >
+            {isPaused ? "Resume" : "Pause"}
+          </button>
+          <button
+            onClick={onTakeBreak}
+            className="px-3 py-1.5 bg-mint-100 hover:bg-mint-200 text-mint-600 text-[11px] font-bold rounded-lg border border-mint-200 transition-colors"
+          >
+            {isBreak ? "Skip Break" : "Break"}
+          </button>
+          <button
+            onClick={onFinish}
+            className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-500 text-[11px] font-bold rounded-lg transition-colors"
+          >
+            Finish
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={onTogglePause}
+            aria-label={isPaused ? "Resume timer" : "Pause timer"}
+            title={isPaused ? "Resume timer" : "Pause timer"}
+            className="w-11 h-11 rounded-full bg-rose-400 hover:bg-rose-500 text-white flex items-center justify-center shadow-sm transition-colors"
+          >
+            {isPaused ? <PlayIcon className="w-4 h-4" /> : <PauseIcon className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={onFinish}
+            aria-label="Finish session"
+            title="Finish session"
+            className="w-11 h-11 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 border border-cream-200 flex items-center justify-center transition-colors"
+          >
+            <StopIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1514,35 +1709,90 @@ function CompleteView({
 }
 
 /* ── Stopwatch Begin View ── */
+function MyDayTaskPicker({
+  tasks,
+  selectedId,
+  onSelect,
+  onGoToTodos,
+  loading,
+}: {
+  tasks: MyDayTask[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onGoToTodos?: () => void;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <div className="w-4 h-4 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/30 p-3 text-center">
+        <p className="text-xs font-semibold text-stone-500">Nothing in My Day yet.</p>
+        <p className="text-[10px] text-stone-400 mt-0.5">
+          Add tasks from the to-do tab to use the stopwatch.
+        </p>
+        {onGoToTodos && (
+          <button
+            onClick={onGoToTodos}
+            className="mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+          >
+            Plan my day
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {tasks.map((t) => (
+        <button
+          key={t._id}
+          onClick={() => onSelect(t._id)}
+          title={t.title}
+          className={`inline-flex items-center gap-1.5 max-w-full text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
+            selectedId === t._id
+              ? "border-amber-300 bg-amber-50 text-amber-700"
+              : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
+          }`}
+        >
+          {t.moduleName && (
+            <span className="flex-shrink-0 text-[8px] px-1 py-0.5 bg-lavender-100 text-lavender-600 rounded font-bold uppercase tracking-wider max-w-[70px] truncate">
+              {t.moduleName}
+            </span>
+          )}
+          <span className="truncate">{t.title}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function StopwatchBeginView({
-  todos,
+  myDayTasks,
+  myDayLoading,
+  onGoToTodos,
   onStart,
   onCancel,
 }: {
-  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  myDayTasks: MyDayTask[];
+  myDayLoading: boolean;
+  onGoToTodos?: () => void;
   onStart: (topic: string, taskName: string) => void;
   onCancel: () => void;
 }) {
   const [selectedTask, setSelectedTask] = useState("");
-
-  const groups: Record<string, typeof todos> = {};
-  for (const t of todos) {
-    const key = t.moduleName || "General";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(t);
-  }
-  const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
-    if (a === "General") return 1;
-    if (b === "General") return -1;
-    return a.localeCompare(b);
-  });
+  const selected = myDayTasks.find((t) => t._id === selectedTask);
 
   const handleStart = () => {
-    if (!selectedTask) return;
-    const td = todos.find((t) => t._id === selectedTask);
-    if (td) {
-      onStart(td.moduleName || td.title, td.title);
-    }
+    if (!selected) return;
+    onStart(selected.moduleName || selected.title, selected.title);
   };
 
   return (
@@ -1550,41 +1800,30 @@ function StopwatchBeginView({
       <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Start Stopwatch</h3>
 
       <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3">
-        <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-          Select Task
-        </p>
-        {sortedGroups.map(([modName, items]) => (
-          <div key={modName}>
-            <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1.5">
-              {modName}
-            </p>
-            <div className="flex gap-1.5 flex-wrap">
-              {items.map((t) => (
-                <button
-                  key={t._id}
-                  onClick={() => setSelectedTask(t._id)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
-                    selectedTask === t._id
-                      ? "border-amber-300 bg-amber-50 text-amber-700"
-                      : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
-                  }`}
-                >
-                  {t.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-        {todos.length === 0 && (
-          <p className="text-xs text-stone-400 italic">No tasks yet. Add some in the Tasks tab.</p>
-        )}
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">
+            Pick from My Day
+          </p>
+          {myDayTasks.length > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">
+              {myDayTasks.length}
+            </span>
+          )}
+        </div>
+        <MyDayTaskPicker
+          tasks={myDayTasks}
+          selectedId={selectedTask}
+          onSelect={setSelectedTask}
+          onGoToTodos={onGoToTodos}
+          loading={myDayLoading}
+        />
       </div>
 
       <div className="flex gap-3">
         <button onClick={onCancel} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
           Cancel
         </button>
-        <button onClick={handleStart} disabled={!selectedTask} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
+        <button onClick={handleStart} disabled={!selected} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
           Start
         </button>
       </div>
@@ -1599,14 +1838,20 @@ const RING_STROKE = 8;
 
 function StopwatchView({
   addSession,
-  todos,
+  myDayTasks,
+  myDayLoading,
+  onGoToTodos,
   onEnd,
+  density,
 }: {
   pomoTick: number;
   addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
-  todos: { _id: string; title: string; moduleName?: string; category?: string }[];
+  myDayTasks: MyDayTask[];
+  myDayLoading: boolean;
+  onGoToTodos?: () => void;
   onEnd: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
+  density: PomoDensity;
 }) {
   const timer = getTimerInstance();
   const [, forceRender] = useState(0);
@@ -1633,18 +1878,7 @@ function StopwatchView({
   const rings = timer.getRingProgresses();
   const maxRings = 4;
   const isWork = timer.subMode === "work";
-
-  const groups: Record<string, typeof todos> = {};
-  for (const t of todos) {
-    const key = t.moduleName || "General";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(t);
-  }
-  const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
-    if (a === "General") return 1;
-    if (b === "General") return -1;
-    return a.localeCompare(b);
-  });
+  const nextTask = myDayTasks.find((t) => t._id === nextTaskId);
 
   const handleEnd = () => {
     const elapsedMins = timer.stop();
@@ -1679,13 +1913,11 @@ function StopwatchView({
   };
 
   const handleConfirmTask = () => {
-    if (!nextTaskId) return;
-    const td = todos.find((t) => t._id === nextTaskId);
-    if (td) {
-      timer.initStopwatch(td.moduleName || td.title, td.title);
-    } else {
-      timer.initStopwatch("Work", "");
+    if (!nextTask) {
+      setNextTaskId("");
+      return;
     }
+    timer.initStopwatch(nextTask.moduleName || nextTask.title, nextTask.title);
     persist();
     setSelectingTask(false);
     forceRender((n) => n + 1);
@@ -1701,6 +1933,20 @@ function StopwatchView({
   const ringColor = isWork ? "#f4a7b9" : "#98d9c2";
   const accentColor = isWork ? "text-amber-600" : "text-mint-500";
   const bgColor = isWork ? "bg-amber-400 hover:bg-amber-500" : "bg-mint-600 hover:bg-mint-500";
+  const dialSize = density === "full"
+    ? "w-72 h-72"
+    : density === "compact"
+      ? "w-[min(14rem,78vw)] h-[min(14rem,78vw)]"
+      : density === "tiny"
+        ? "w-[min(11rem,72vw)] h-[min(11rem,72vw)]"
+        : "w-[min(8rem,68vw)] h-[min(8rem,68vw)]";
+  const digitSize = density === "full"
+    ? "text-5xl"
+    : density === "compact"
+      ? "text-4xl"
+      : density === "tiny"
+        ? "text-3xl"
+        : "text-2xl";
 
   // Task selector (shown after break ends)
   if (selectingTask) {
@@ -1708,30 +1954,22 @@ function StopwatchView({
       <div className="space-y-4">
         <h3 className="text-lg font-bold font-hand text-3xl text-stone-600">Next Task</h3>
         <div className="bg-white rounded-xl border border-cream-200 p-4 space-y-3 max-h-64 overflow-y-auto">
-          {sortedGroups.map(([modName, items]) => (
-            <div key={modName}>
-              <p className="text-[9px] font-bold text-lavender-500 uppercase tracking-wider mb-1.5">{modName}</p>
-              <div className="flex gap-1.5 flex-wrap">
-                {items.map((t) => (
-                  <button
-                    key={t._id}
-                    onClick={() => setNextTaskId(t._id)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
-                      nextTaskId === t._id ? "border-amber-300 bg-amber-50 text-amber-700" : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
-                    }`}
-                  >
-                    {t.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+            From My Day
+          </p>
+          <MyDayTaskPicker
+            tasks={myDayTasks}
+            selectedId={nextTaskId}
+            onSelect={setNextTaskId}
+            onGoToTodos={onGoToTodos}
+            loading={myDayLoading}
+          />
         </div>
         <div className="flex gap-3">
           <button onClick={() => { setSelectingTask(false); setNextTaskId(""); onEnd(); }} className="flex-1 py-2.5 bg-cream-100 hover:bg-cream-200 text-stone-500 font-bold rounded-xl text-sm transition-colors">
             End
           </button>
-          <button onClick={handleConfirmTask} disabled={!nextTaskId} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
+          <button onClick={handleConfirmTask} disabled={!nextTask} className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 disabled:bg-stone-200 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
             Start Work
           </button>
         </div>
@@ -1740,15 +1978,23 @@ function StopwatchView({
   }
 
   return (
-    <div className="text-center space-y-5">
-      <div className="text-lg font-bold text-stone-600 font-hand text-2xl">
-        {isWork
-          ? timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.topic || "Working..."
-          : "Break"}
-      </div>
+    <div
+      className={
+        density === "full"
+          ? "text-center space-y-5"
+          : "flex flex-1 flex-col items-center justify-center gap-3 text-center"
+      }
+    >
+      {density !== "micro" && (
+        <div className="max-w-full truncate px-1 text-lg font-bold text-stone-600 font-hand text-2xl">
+          {isWork
+            ? timer.taskName ? `${timer.topic} — ${timer.taskName}` : timer.topic || "Working..."
+            : "Break"}
+        </div>
+      )}
 
       {/* Multi-ring */}
-      <div className="relative w-72 h-72 mx-auto flex items-center justify-center">
+      <div className={`relative ${dialSize} flex-shrink-0 mx-auto flex items-center justify-center`}>
         <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 240 240">
           {Array.from({ length: maxRings }).map((_, i) => {
             const r = RING_R - i * RING_GAP;
@@ -1769,36 +2015,44 @@ function StopwatchView({
             );
           })}
         </svg>
-        <span className={`text-5xl font-bold font-pomo relative z-10 ${accentColor}`}>
+        <span className={`${digitSize} font-bold font-pomo relative z-10 ${accentColor}`}>
           {timer.isPaused ? "Paused" : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`}
         </span>
       </div>
 
-      <div className="flex gap-2 justify-center">
+      <div className={`flex flex-wrap justify-center ${density === "full" ? "gap-2" : "gap-1.5"}`}>
         <button
           onClick={handleTogglePause}
-          className={`px-5 py-2.5 text-white font-bold rounded-xl text-sm transition-colors shadow-sm ${bgColor}`}
+          className={`text-white font-bold rounded-xl transition-colors shadow-sm ${bgColor} ${
+            density === "full" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[11px]"
+          }`}
         >
           {timer.isPaused ? "Resume" : "Pause"}
         </button>
         {isWork ? (
           <button
             onClick={handleTakeBreak}
-            className="px-5 py-2.5 bg-mint-600 hover:bg-mint-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+            className={`bg-mint-600 hover:bg-mint-500 text-white font-bold rounded-xl transition-colors shadow-sm ${
+              density === "full" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[11px]"
+            }`}
           >
             Break
           </button>
         ) : (
           <button
             onClick={handleResumeWork}
-            className="px-5 py-2.5 bg-amber-400 hover:bg-amber-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+            className={`bg-amber-400 hover:bg-amber-500 text-white font-bold rounded-xl transition-colors shadow-sm ${
+              density === "full" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[11px]"
+            }`}
           >
             Work
           </button>
         )}
         <button
           onClick={handleEnd}
-          className="px-5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl text-sm transition-colors"
+          className={`bg-stone-200 hover:bg-stone-300 text-stone-600 font-bold rounded-xl transition-colors ${
+            density === "full" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[11px]"
+          }`}
         >
           End
         </button>
