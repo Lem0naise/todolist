@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 
 export type PomoDensity = "full" | "compact" | "tiny" | "micro";
 
-/** Width thresholds (CSS px) at which the Pomo timer sheds UI. */
-// 360+ is a normal phone / desktop width, so it stays full. A 320px phone is
-// the narrowest common viewport, so only windows below that become "micro".
-export const POMO_COMPACT_WIDTH = 360;
-export const POMO_TINY_WIDTH = 340;
-export const POMO_MICRO_WIDTH = 320;
+// 360+ is a normal phone / desktop width, so it stays full. Below that the
+// timer steps down through compact -> tiny -> micro.
+const POMO_COMPACT_WIDTH = 360;
+const POMO_TINY_WIDTH = 340;
+const POMO_MICRO_WIDTH = 320;
 
-export function densityForWidth(width: number): PomoDensity {
+function densityForWidth(width: number): PomoDensity {
   if (width < POMO_MICRO_WIDTH) return "micro";
   if (width < POMO_TINY_WIDTH) return "tiny";
   if (width < POMO_COMPACT_WIDTH) return "compact";

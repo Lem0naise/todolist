@@ -2,6 +2,14 @@ import { useDraggable } from "@dnd-kit/core";
 import { SunIcon } from "../icons";
 import type { MyDayTask } from "./myDay";
 
+function ModuleBadge({ name }: { name: string }) {
+  return (
+    <span className="flex-shrink-0 text-[8px] px-1 py-0.5 bg-lavender-100 text-lavender-600 rounded font-bold uppercase tracking-wider max-w-[70px] truncate">
+      {name}
+    </span>
+  );
+}
+
 /** Presentational chip, also used inside the drag overlay. */
 export function TaskDragChip({
   task,
@@ -15,11 +23,7 @@ export function TaskDragChip({
       className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-[11px] font-semibold text-stone-700 ${className}`}
     >
       <span className="truncate max-w-[160px]">{task.title}</span>
-      {task.moduleName && (
-        <span className="flex-shrink-0 text-[8px] px-1 py-0.5 bg-lavender-100 text-lavender-600 rounded font-bold uppercase tracking-wider max-w-[70px] truncate">
-          {task.moduleName}
-        </span>
-      )}
+      {task.moduleName && <ModuleBadge name={task.moduleName} />}
     </div>
   );
 }
@@ -57,17 +61,90 @@ function DraggableTaskChip({
       <span className="flex-1 min-w-0 text-[11px] font-semibold text-stone-700 truncate">
         {task.title}
       </span>
-      {task.moduleName && (
-        <span className="flex-shrink-0 text-[8px] px-1 py-0.5 bg-lavender-100 text-lavender-600 rounded font-bold uppercase tracking-wider max-w-[70px] truncate">
-          {task.moduleName}
-        </span>
-      )}
+      {task.moduleName && <ModuleBadge name={task.moduleName} />}
       {assigned.length > 0 && (
         <span className="flex-shrink-0 text-[8px] px-1 py-0.5 bg-rose-100 text-rose-500 rounded font-bold uppercase tracking-wider">
           {assigned.join(" ")}
         </span>
       )}
     </button>
+  );
+}
+
+/** Shared empty state for My Day panels/pickers. */
+function MyDayEmptyState({
+  hint,
+  onGoToTodos,
+}: {
+  hint: string;
+  onGoToTodos?: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3 text-center">
+      <p className="text-[11px] font-semibold text-stone-500">
+        Nothing in My Day yet.
+      </p>
+      <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{hint}</p>
+      {onGoToTodos && (
+        <button
+          onClick={onGoToTodos}
+          className="mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+        >
+          Plan my day
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function MyDayTaskPicker({
+  tasks,
+  selectedId,
+  onSelect,
+  onGoToTodos,
+  loading,
+}: {
+  tasks: MyDayTask[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onGoToTodos?: () => void;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <div className="w-4 h-4 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <MyDayEmptyState
+        hint="Add tasks to My Day from the to-do tab."
+        onGoToTodos={onGoToTodos}
+      />
+    );
+  }
+
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {tasks.map((t) => (
+        <button
+          key={t._id}
+          onClick={() => onSelect(t._id)}
+          title={t.title}
+          className={`inline-flex items-center gap-1.5 max-w-full text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
+            selectedId === t._id
+              ? "border-amber-300 bg-amber-50 text-amber-700"
+              : "border-cream-200 bg-white text-stone-500 hover:border-amber-200"
+          }`}
+        >
+          {t.moduleName && <ModuleBadge name={t.moduleName} />}
+          <span className="truncate">{t.title}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -107,22 +184,10 @@ export function MyDayPanel({
           <div className="w-4 h-4 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : tasks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-amber-200 bg-white/60 p-3 text-center">
-          <p className="text-[11px] font-semibold text-stone-500">
-            Nothing in My Day yet.
-          </p>
-          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">
-            Add tasks from the to-do tab to plan your focus.
-          </p>
-          {onGoToTodos && (
-            <button
-              onClick={onGoToTodos}
-              className="mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
-            >
-              Plan my day
-            </button>
-          )}
-        </div>
+        <MyDayEmptyState
+          hint="Add tasks from the to-do tab to plan your focus."
+          onGoToTodos={onGoToTodos}
+        />
       ) : (
         <>
           <p className="text-[10px] text-stone-400 leading-relaxed mb-2">

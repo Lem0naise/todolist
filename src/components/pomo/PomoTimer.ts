@@ -166,16 +166,23 @@ export class PomoTimer {
       clearInterval(this.interval);
       this.interval = null;
     }
+    let mins = 0;
     if (this.startTime) {
-      const elapsed = (new Date().getTime() - this.startTime.getTime()) / 1000 / 60;
-      const mins = Math.max(1, Math.round(elapsed));
+      const now = Date.now();
+      let elapsedMs = now - this.startTime.getTime();
+      // An active pause has not been folded into startTime by resume() yet.
+      if (this.isPaused && this.pausedTime) {
+        elapsedMs -= now - this.pausedTime.getTime();
+      }
+      mins = Math.max(1, Math.round(elapsedMs / 1000 / 60));
       if (this.mode === "stopwatch" ? this.subMode === "work" : this.phase?.type === "work") {
         this.totalWorkMinutes += mins;
       }
       this.lastElapsedMins = mins;
-      return mins;
     }
-    return 0;
+    this.isPaused = false;
+    this.pausedTime = null;
+    return mins;
   }
 
   addWorkMinutes(mins: number) {
