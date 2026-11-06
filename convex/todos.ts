@@ -17,6 +17,13 @@ const SUBTASK_VALIDATOR = v.optional(v.array(v.object({
   done: v.boolean(),
 })));
 
+/** Estimate is stored as whole minutes; null/0/absent all mean "no estimate". */
+function normalizeEstimate(minutes: number | null | undefined): number | undefined {
+  if (minutes === undefined || minutes === null) return undefined;
+  if (!Number.isFinite(minutes) || minutes <= 0) return undefined;
+  return Math.round(minutes);
+}
+
 // Clearable variants for bulk edits: null explicitly removes the field.
 const CLEARABLE_STRING = v.optional(v.union(v.string(), v.null()));
 const CLEARABLE_CATEGORY = v.optional(
@@ -123,6 +130,7 @@ export const create = mutation({
     category: CATEGORY_VALIDATOR,
     subTasks: SUBTASK_VALIDATOR,
     manualProgress: v.optional(v.number()),
+    estimateMinutes: v.optional(v.number()),
     linkedEventId: v.optional(v.id("timetableEvents")),
     moduleId: v.optional(v.id("modules")),
     focusDate: v.optional(v.string()),
@@ -136,6 +144,7 @@ export const create = mutation({
     const moduleId = args.moduleId ?? await matchModuleByTitle(ctx, userId, args.title);
     return await ctx.db.insert("todos", {
       ...args,
+      estimateMinutes: normalizeEstimate(args.estimateMinutes),
       moduleId,
       userId,
       completed: false,
@@ -154,13 +163,14 @@ export const update = mutation({
     category: CATEGORY_VALIDATOR,
     subTasks: SUBTASK_VALIDATOR,
     manualProgress: v.optional(v.number()),
+    estimateMinutes: v.optional(v.union(v.number(), v.null())),
     linkedEventId: v.optional(v.id("timetableEvents")),
     moduleId: v.optional(v.id("modules")),
     focusDate: v.optional(v.string()),
     focusOrder: v.optional(v.number()),
     snoozedUntil: v.optional(v.string()),
   },
-  handler: async (ctx, { id, ...updates }) => {
+  handler: async (ctx, { id, estimateMinutes, ...updates }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const todo = await ctx.db.get(id);
@@ -170,7 +180,13 @@ export const update = mutation({
       const newModuleId = await matchModuleByTitle(ctx, userId, updates.title);
       updates.moduleId = newModuleId;
     }
-    await ctx.db.patch(id, updates);
+    const patch: Record<string, unknown> = { ...updates };
+    // `undefined` args are dropped by the client, so clearing must be explicit
+    // (null); omitting the field leaves the existing estimate untouched.
+    if (estimateMinutes !== undefined) {
+      patch.estimateMinutes = normalizeEstimate(estimateMinutes);
+    }
+    await ctx.db.patch(id, patch);
   },
 });
 
@@ -230,6 +246,24 @@ export const updateProgress = mutation({
     const todo = await ctx.db.get(id);
     if (!todo || todo.userId !== userId) throw new Error("Not found");
     await ctx.db.patch(id, { manualProgress });
+  },
+});
+
+/** Set (or clear with null) a task's effort estimate in minutes. */
+export const setEstimate = mutation({
+  args: {
+    id: v.id("todos"),
+    minutes: v.union(v.number(), v.null()),
+  },
+  handler: async (ctx, { id, minutes }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const todo = await ctx.db.get(id);
+    if (!todo || todo.userId !== userId) throw new Error("Not found");
+    if (minutes !== null && !Number.isFinite(minutes)) {
+      throw new Error("Invalid estimate");
+    }
+    await ctx.db.patch(id, { estimateMinutes: normalizeEstimate(minutes) });
   },
 });
 

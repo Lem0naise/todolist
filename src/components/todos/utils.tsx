@@ -19,6 +19,7 @@ export type Todo = {
   category?: Category;
   subTasks?: SubTask[];
   manualProgress?: number;
+  estimateMinutes?: number;
   linkedEventId?: Id<"timetableEvents">;
   linkedEventTitle?: string;
   manualOrder?: number;
@@ -148,6 +149,25 @@ export function computeProgress(todo: Todo): number | null {
 
 export function effectiveCategory(todo: Todo): Category {
   return todo.category ?? "other";
+}
+
+export const ESTIMATE_PRESETS: { label: string; minutes: number }[] = [
+  { label: "30m", minutes: 30 },
+  { label: "1h", minutes: 60 },
+  { label: "2h", minutes: 120 },
+  { label: "3h", minutes: 180 },
+  { label: "4h", minutes: 240 },
+];
+
+export type EstimateTier = "none" | "small" | "medium" | "large" | "xl";
+
+/** Effort bands used to give bigger tasks more visual weight in the list. */
+export function estimateTier(minutes?: number): EstimateTier {
+  if (!minutes || minutes <= 0) return "none";
+  if (minutes <= 30) return "small";
+  if (minutes <= 90) return "medium";
+  if (minutes <= 180) return "large";
+  return "xl";
 }
 
 export function isSnoozed(todo: Todo, today: string): boolean {

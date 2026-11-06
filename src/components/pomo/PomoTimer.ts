@@ -18,6 +18,7 @@ export class PomoTimer {
   phase: TimerPhase | null = null;
   topic = "";
   taskName = "";
+  taskId?: string;
   interval: ReturnType<typeof setInterval> | null = null;
   isRunning = false;
   isPaused = false;
@@ -90,12 +91,13 @@ export class PomoTimer {
     this.startNextPhase();
   }
 
-  initStopwatch(topic: string, taskName = "") {
+  initStopwatch(topic: string, taskName = "", taskId?: string) {
     this.reset();
     this.mode = "stopwatch";
     this.subMode = "work";
     this.topic = topic;
     this.taskName = taskName;
+    this.taskId = taskId;
     this.startTime = new Date();
     this.isRunning = true;
   }
@@ -105,6 +107,7 @@ export class PomoTimer {
     this.subMode = "break";
     this.topic = "Break";
     this.taskName = "";
+    this.taskId = undefined;
     this.startTime = new Date();
     this.isRunning = true;
     return mins;
@@ -117,6 +120,7 @@ export class PomoTimer {
     this.phase = null;
     this.topic = "";
     this.taskName = "";
+    this.taskId = undefined;
     this.interval = null;
     this.isRunning = false;
     this.isPaused = false;

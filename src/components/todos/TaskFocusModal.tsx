@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { addDaysLocal } from "../../lib/date";
+import { formatDuration, formatPomos, minutesToPomos } from "../../lib/duration";
+import { loadSettings } from "../pomo/usePomoData";
+import type { TaskSpent } from "../pomo/spent";
 import {
   CATEGORY_META,
+  ESTIMATE_PRESETS,
   SNOOZE_PRESETS,
   computeProgress,
   effectiveCategory,
@@ -61,6 +65,7 @@ const actionClass =
 export function TaskFocusModal({
   todo,
   today,
+  spent,
   onClose,
   onToggleDone,
   onEdit,
@@ -70,9 +75,11 @@ export function TaskFocusModal({
   onSubTaskToggle,
   onProgressChange,
   onStartPomo,
+  onEstimateChange,
 }: {
   todo: Todo;
   today: string;
+  spent?: TaskSpent;
   onClose: () => void;
   onToggleDone: () => void;
   onEdit: () => void;
@@ -82,8 +89,10 @@ export function TaskFocusModal({
   onSubTaskToggle: (subTaskId: string) => void;
   onProgressChange: (value: number) => void;
   onStartPomo?: () => void;
+  onEstimateChange?: (minutes: number | null) => void;
 }) {
   const [showSnooze, setShowSnooze] = useState(false);
+  const [workMinutes] = useState(() => loadSettings().work);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const category = effectiveCategory(todo);
@@ -93,6 +102,11 @@ export function TaskFocusModal({
   const focused = isFocusToday(todo, today);
   const snoozed = !todo.completed && isSnoozed(todo, today);
   const due = todo.dueDate ? formatDue(todo.dueDate) : null;
+  const spentMinutes = spent?.minutes ?? 0;
+  const estimate = todo.estimateMinutes;
+  const estimateRatio =
+    estimate && estimate > 0 ? spentMinutes / estimate : 0;
+  const overEstimate = estimateRatio > 1;
 
   // Mount-only: lock the page and move focus into the dialog. Escape is wired
   // separately so typing/range updates don't re-focus the panel.
@@ -205,6 +219,126 @@ export function TaskFocusModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-2 sm:px-6">
+          <section>
+            <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Effort
+            </h3>
+            <div className="space-y-3 rounded-xl border border-cream-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-stone-400">
+                    Estimated
+                  </p>
+                  <p className="text-sm font-bold text-stone-700">
+                    {estimate
+                      ? `${formatDuration(estimate)} · ~${formatPomos(minutesToPomos(estimate, workMinutes))}`
+                      : "No estimate yet"}
+                  </p>
+                </div>
+                <div className="min-w-0 text-right">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-stone-400">
+                    Spent
+                  </p>
+                  <p className="text-sm font-bold text-stone-700">
+                    {spentMinutes > 0
+                      ? `${formatDuration(spentMinutes)} · ~${formatPomos(minutesToPomos(spentMinutes, workMinutes))}`
+                      : "Nothing yet"}
+                  </p>
+                </div>
+              </div>
+
+              {estimate ? (
+                <div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-cream-200">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        overEstimate ? "bg-amber-400" : "bg-mint-400"
+                      }`}
+                      style={{
+                        width: `${Math.min(100, Math.round(estimateRatio * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <p
+                    className={`mt-1 text-[10px] font-bold ${
+                      overEstimate ? "text-amber-600" : "text-stone-400"
+                    }`}
+                  >
+                    {overEstimate
+                      ? `${formatDuration(spentMinutes - estimate)} over estimate`
+                      : `${Math.round(estimateRatio * 100)}% of estimate`}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[10px] font-medium text-stone-400">
+                  Set an estimate to see how much is left.
+                </p>
+              )}
+
+              {onEstimateChange && (
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-cream-100 pt-2">
+                  <span className="mr-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-400">
+                    Set
+                  </span>
+                  {ESTIMATE_PRESETS.map((preset) => {
+                    const active =
+                      estimate !== undefined &&
+                      Math.abs(estimate - preset.minutes) < 1;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() =>
+                          onEstimateChange(active ? null : preset.minutes)
+                        }
+                        className={`rounded-lg px-2 py-1 text-[10px] font-bold transition-colors ${
+                          active
+                            ? "bg-rose-100 text-rose-600"
+                            : "bg-cream-100 text-stone-500 hover:bg-cream-200"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                  {estimate !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => onEstimateChange(null)}
+                      className="rounded-lg bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-500 transition-colors hover:bg-rose-100"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {spent && spent.sessions.length > 0 && (
+                <div className="border-t border-cream-100 pt-2">
+                  <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-stone-400">
+                    Recent sessions
+                  </p>
+                  <div className="space-y-0.5">
+                    {spent.sessions.slice(0, 4).map((session) => (
+                      <div
+                        key={session._id}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="min-w-0 truncate font-medium text-stone-500">
+                          {formatShortDate(session.date)}
+                          {session.topic ? ` · ${session.topic}` : ""}
+                        </span>
+                        <span className="flex-shrink-0 font-bold text-stone-600">
+                          {formatDuration(session.minutes)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
           <section>
             <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">
               Notes

@@ -107,6 +107,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
             d.toTimeString().split(" ")[0],
             timer.duration,
             topic,
+            { taskId: timer.phase?.taskId, taskName: timer.taskName },
           );
           timer.addWorkMinutes(timer.duration);
           notifySessionSaved(timer.duration, topic);

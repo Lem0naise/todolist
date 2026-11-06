@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { formatDuration, formatPomos, minutesToPomos } from "../../lib/duration";
+import { loadSettings } from "../pomo/usePomoData";
+import { ESTIMATE_PRESETS } from "./utils";
 
 type Category = "lecture_catchup" | "project" | "other";
 type SubTask = { id: string; title: string; done: boolean };
@@ -17,6 +20,7 @@ interface Props {
     category?: Category;
     subTasks?: SubTask[];
     manualProgress?: number;
+    estimateMinutes?: number;
     linkedEventId?: string;
     moduleId?: string;
   };
@@ -65,6 +69,12 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
   const [subTasks, setSubTasks] = useState<SubTask[]>(editTodo?.subTasks ?? []);
   const [newSubTask, setNewSubTask] = useState("");
   const [manualProgress, setManualProgress] = useState(editTodo?.manualProgress ?? 0);
+  const [estimateHours, setEstimateHours] = useState(() => {
+    const minutes = editTodo?.estimateMinutes;
+    if (!minutes) return "";
+    return String(Math.round((minutes / 60) * 100) / 100);
+  });
+  const [workMinutes] = useState(() => loadSettings().work);
   const [linkedEventId, setLinkedEventId] = useState<string>(editTodo?.linkedEventId ?? "");
   const [moduleId, setModuleId] = useState<string>(editTodo?.moduleId ?? "");
   const [loading, setLoading] = useState(false);
@@ -90,6 +100,14 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
     setSubTasks((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const estimateMinutes = (() => {
+    const hours = Number(estimateHours);
+    if (!estimateHours.trim() || !Number.isFinite(hours) || hours <= 0) {
+      return undefined;
+    }
+    return Math.round(hours * 60);
+  })();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -107,6 +125,7 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
           dueDate: dueDate || undefined,
           highPriority,
           category,
+          estimateMinutes,
           ...extras,
         };
         if (editTodo) {
@@ -129,6 +148,7 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
           dueDate: dueDate || undefined,
           highPriority,
           category,
+          estimateMinutes: estimateMinutes ?? null,
           linkedEventId: eventId,
           moduleId: modId,
           ...extras,
@@ -140,6 +160,7 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
           dueDate: dueDate || undefined,
           highPriority,
           category,
+          estimateMinutes,
           linkedEventId: eventId,
           moduleId: modId,
           ...extras,
@@ -279,6 +300,54 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
               onChange={(e) => setDueDate(e.target.value)}
               className="w-full px-3 py-2 text-sm font-semibold bg-white border border-cream-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 text-stone-700 transition-all"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                Estimate
+              </label>
+              {estimateMinutes !== undefined && (
+                <span className="text-[10px] font-bold text-stone-400">
+                  {`${formatDuration(estimateMinutes)} · ~${formatPomos(minutesToPomos(estimateMinutes, workMinutes))}`}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                step={0.25}
+                value={estimateHours}
+                onChange={(e) => setEstimateHours(e.target.value)}
+                placeholder="How long will it take?"
+                className="w-full px-3 py-2 pr-10 text-sm font-semibold bg-white border border-cream-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 text-stone-700 placeholder-stone-300 transition-all"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
+                h
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {ESTIMATE_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setEstimateHours(String(preset.minutes / 60))}
+                  className="px-2 py-1 rounded-lg bg-cream-100 text-stone-500 hover:bg-cream-200 text-[10px] font-bold transition-colors"
+                >
+                  {preset.label}
+                </button>
+              ))}
+              {estimateHours.trim() !== "" && (
+                <button
+                  type="button"
+                  onClick={() => setEstimateHours("")}
+                  className="px-2 py-1 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 text-[10px] font-bold transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {category === "project" && (

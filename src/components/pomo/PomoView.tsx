@@ -25,11 +25,13 @@ import {
   type PomoSession,
   type PomoSettings,
   type CycleBlock,
+  type AddSessionFn,
 } from "./usePomoData";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestPomoSessions } from "../../hooks/useGuestPomoSessions";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
 import { getTodayLocal } from "../../lib/date";
+import { formatDuration } from "../../lib/duration";
 import { FloatingPomo } from "./FloatingPomo";
 import { MyDayPanel, MyDayTaskPicker, TaskDragChip } from "./MyDayPanel";
 import {
@@ -58,16 +60,6 @@ function formatTaskLabel(topic: string, taskName: string): string {
     return `${topic} — ${taskName}`;
   }
   return taskName || topic;
-}
-
-function formatDuration(mins: number) {
-  const rounded = Math.round(mins);
-  const h = Math.floor(rounded / 60);
-  const m = rounded % 60;
-  if (h > 0) {
-    return m === 0 ? `${h}h` : `${h}h ${m}m`;
-  }
-  return `${m} min`;
 }
 
 function genBlockId() {
@@ -197,8 +189,8 @@ export function PomoView({
           myDayTasks={myDayTasks}
           myDayLoading={todosLoading}
           onGoToTodos={onGoToTodos}
-          onStart={(topic, taskName) => {
-            startStopwatch(topic, taskName);
+          onStart={(topic, taskName, taskId) => {
+            startStopwatch(topic, taskName, taskId);
             setView("timer");
           }}
           onCancel={() => setView("menu")}
@@ -885,7 +877,7 @@ function TimerView({
   density,
 }: {
   pomoTick: number;
-  addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
+  addSession: AddSessionFn;
   settings: PomoSettings;
   sessions: PomoSession[];
   myDayTasks: MyDayTask[];
@@ -986,7 +978,10 @@ function TimerView({
       if (elapsed > 0) {
         const d = new Date();
         const topic = timer.topic || timer.taskName || "Work";
-        addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+        addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic, {
+          taskId: timer.phase?.taskId,
+          taskName: timer.taskName,
+        });
         notifySessionSaved(elapsed, topic);
       }
     } else {
@@ -1002,7 +997,10 @@ function TimerView({
       const d = new Date();
       const elapsed = timer.stop();
       const topic = timer.topic || timer.taskName || "Work";
-      addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+      addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic, {
+        taskId: timer.phase?.taskId,
+        taskName: timer.taskName,
+      });
       notifySessionSaved(elapsed, topic);
     } else {
       timer.stop();
@@ -1028,7 +1026,10 @@ function TimerView({
     const d = new Date();
     const elapsed = timer.stop();
     const topic = timer.topic || timer.taskName || "Work";
-    addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic);
+    addSession(getLocalDate(), d.toTimeString().split(" ")[0], elapsed, topic, {
+      taskId: timer.phase?.taskId,
+      taskName: timer.taskName,
+    });
     notifySessionSaved(elapsed, topic);
     // Insert break and skip to it
     timer.insertBreakAfterCurrent(settings.shortBreak);
@@ -1577,7 +1578,7 @@ function StopwatchBeginView({
   myDayTasks: MyDayTask[];
   myDayLoading: boolean;
   onGoToTodos?: () => void;
-  onStart: (topic: string, taskName: string) => void;
+  onStart: (topic: string, taskName: string, taskId: string) => void;
   onCancel: () => void;
 }) {
   const [selectedTask, setSelectedTask] = useState("");
@@ -1585,7 +1586,7 @@ function StopwatchBeginView({
 
   const handleStart = () => {
     if (!selected) return;
-    onStart(selected.moduleName || selected.title, selected.title);
+    onStart(selected.moduleName || selected.title, selected.title, selected._id);
   };
 
   return (
@@ -1638,7 +1639,7 @@ function StopwatchView({
   density,
 }: {
   pomoTick: number;
-  addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
+  addSession: AddSessionFn;
   myDayTasks: MyDayTask[];
   myDayLoading: boolean;
   onGoToTodos?: () => void;
@@ -1674,6 +1675,8 @@ function StopwatchView({
   const nextTask = myDayTasks.find((t) => t._id === nextTaskId);
 
   const handleEnd = () => {
+    const task = { taskId: timer.taskId, taskName: timer.taskName };
+    const topic = timer.topic || timer.taskName || "Work";
     const elapsedMins = timer.stop();
     if (elapsedMins > 0 && timer.subMode === "work") {
       const d = new Date();
@@ -1681,7 +1684,8 @@ function StopwatchView({
         getLocalDate(),
         d.toTimeString().split(" ")[0],
         elapsedMins,
-        timer.topic || timer.taskName || "Work",
+        topic,
+        task,
       );
     }
     stopTimer();
@@ -1689,10 +1693,12 @@ function StopwatchView({
   };
 
   const handleTakeBreak = () => {
+    const task = { taskId: timer.taskId, taskName: timer.taskName };
+    const topic = timer.topic || timer.taskName || "Work";
     const workMins = timer.stop();
     if (workMins > 0) {
       const d = new Date();
-      addSession(getLocalDate(), d.toTimeString().split(" ")[0], workMins, timer.topic || timer.taskName || "Work");
+      addSession(getLocalDate(), d.toTimeString().split(" ")[0], workMins, topic, task);
     }
     timer.startBreak();
     persist();
@@ -1710,7 +1716,7 @@ function StopwatchView({
       setNextTaskId("");
       return;
     }
-    timer.initStopwatch(nextTask.moduleName || nextTask.title, nextTask.title);
+    timer.initStopwatch(nextTask.moduleName || nextTask.title, nextTask.title, nextTask._id);
     persist();
     setSelectingTask(false);
     forceRender((n) => n + 1);
@@ -1857,7 +1863,7 @@ function LogView({
 }: {
   todos: { _id: string; title: string; moduleName?: string; category?: string }[];
   modules: { _id: string; name: string }[];
-  addSession: (date: string, time: string, minutes: number, topic: string) => Promise<unknown>;
+  addSession: AddSessionFn;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -1884,7 +1890,11 @@ function LogView({
   const handleSave = async () => {
     const mins = parseFloat(minutes);
     if (!date || !mins || mins <= 0) return;
-    await addSession(date, new Date().toTimeString().split(" ")[0], mins, topic.trim());
+    const selectedTask = todos.find((t) => t._id === selectedTaskId);
+    await addSession(date, new Date().toTimeString().split(" ")[0], mins, topic.trim(), {
+      taskId: selectedTaskId || undefined,
+      taskName: selectedTask?.title,
+    });
     onDone();
   };
 

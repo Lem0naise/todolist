@@ -94,6 +94,8 @@ export default defineSchema({
     }))),
     // Manual progress override (0-100); used when no subTasks or alongside them
     manualProgress: v.optional(v.number()),
+    // Effort estimate in minutes; shown alongside a pomo conversion in the UI
+    estimateMinutes: v.optional(v.number()),
     // Link any todo to a specific timetable event (not just catchups)
     linkedEventId: v.optional(v.id("timetableEvents")),
     // Manual sort order within each category (set by drag-to-reorder)

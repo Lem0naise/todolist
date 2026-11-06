@@ -12,6 +12,7 @@ interface PersistedTimer {
   subMode: "work" | "break";
   topic: string;
   taskName: string;
+  taskId?: string;
   startTime: number;
   isPaused: boolean;
   pausedTime: number | null;
@@ -50,6 +51,7 @@ export function persist() {
     subMode: instance.subMode,
     topic: instance.topic,
     taskName: instance.taskName,
+    taskId: instance.taskId,
     startTime: instance.startTime?.getTime() ?? Date.now(),
     isPaused: instance.isPaused,
     pausedTime: instance.pausedTime?.getTime() ?? null,
@@ -96,7 +98,7 @@ export function restoreTimer(): PomoTimer | null {
         timer.taskName = timer.phase.taskName || "";
       }
     } else {
-      timer.initStopwatch(data.topic, data.taskName);
+      timer.initStopwatch(data.topic, data.taskName, data.taskId);
       timer.subMode = data.subMode;
       timer.startTime = new Date(data.startTime);
     }
@@ -131,9 +133,9 @@ export function startTimer(blocks: CycleBlock[]): PomoTimer {
   return instance;
 }
 
-export function startStopwatch(topic: string, taskName: string): PomoTimer {
+export function startStopwatch(topic: string, taskName: string, taskId?: string): PomoTimer {
   instance = new PomoTimer();
-  instance.initStopwatch(topic, taskName);
+  instance.initStopwatch(topic, taskName, taskId);
   persist();
   return instance;
 }

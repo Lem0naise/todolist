@@ -17,6 +17,7 @@ interface GuestTodo {
   category?: Category;
   subTasks?: SubTask[];
   manualProgress?: number;
+  estimateMinutes?: number;
   moduleName?: string;
   manualOrder?: number;
   focusDate?: string;
@@ -62,6 +63,7 @@ export function useGuestTodos(active: boolean) {
       category: data.category || "other",
       subTasks: data.subTasks,
       manualProgress: data.manualProgress,
+      estimateMinutes: data.estimateMinutes,
       moduleName: data.moduleName,
       manualOrder: data.manualOrder,
       focusDate: data.focusDate,

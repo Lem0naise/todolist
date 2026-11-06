@@ -6,6 +6,19 @@ import type { Id } from "../../../convex/_generated/dataModel";
 
 const SETTINGS_KEY = "unitrack:pomo:settings";
 
+export interface SessionTaskRef {
+  taskId?: string;
+  taskName?: string;
+}
+
+export type AddSessionFn = (
+  date: string,
+  time: string,
+  minutes: number,
+  topic: string,
+  task?: SessionTaskRef,
+) => Promise<unknown>;
+
 export interface PomoSession {
   _id: string;
   date: string;
@@ -63,8 +76,15 @@ export function usePomoData() {
   const clearAllMutation = useMutation(api.pomo.clearAll);
 
   const addSession = useCallback(
-    (date: string, time: string, minutes: number, topic: string, taskId?: string, taskName?: string) => {
-      return addMutation({ date, time, minutes: Math.round(minutes), topic, taskId: taskId as Id<"todos"> | undefined, taskName });
+    (date: string, time: string, minutes: number, topic: string, task?: SessionTaskRef) => {
+      return addMutation({
+        date,
+        time,
+        minutes: Math.round(minutes),
+        topic,
+        taskId: task?.taskId as Id<"todos"> | undefined,
+        taskName: task?.taskName,
+      });
     },
     [addMutation],
   );

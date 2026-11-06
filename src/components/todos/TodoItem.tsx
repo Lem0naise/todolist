@@ -4,11 +4,13 @@ import {
   formatShortDate,
   computeProgress,
   effectiveCategory,
+  estimateTier,
   isSnoozed,
   SNOOZE_PRESETS,
   type Todo,
 } from "./utils";
 import { addDaysLocal, getTodayLocal } from "../../lib/date";
+import { formatDuration } from "../../lib/duration";
 import { PlayIcon, SunIcon } from "../icons";
 
 function CheckIcon() {
@@ -93,6 +95,40 @@ export function TodoItem({
   const isProject = cat === "project";
   const snoozed = !todo.completed && isSnoozed(todo, today);
 
+  // Bigger estimates get more visual weight so effort is scannable at a glance.
+  const tier = todo.completed ? "none" : estimateTier(todo.estimateMinutes);
+  const rowSize =
+    tier === "small"
+      ? "px-3 py-1.5"
+      : tier === "large"
+        ? "px-3.5 py-2.5"
+        : tier === "xl"
+          ? "px-4 py-3"
+          : "px-3 py-2";
+  const titleSize =
+    tier === "small"
+      ? "text-[13px]"
+      : tier === "large"
+        ? "text-[15px]"
+        : tier === "xl"
+          ? "text-base"
+          : "text-sm";
+  const accent =
+    tier === "large"
+      ? "border-l-2 border-l-amber-200"
+      : tier === "xl"
+        ? "border-l-2 border-l-rose-300"
+        : "";
+  const estimateChip = todo.completed
+    ? "bg-stone-100 text-stone-400"
+    : tier === "small"
+      ? "bg-mint-100 text-mint-600"
+      : tier === "large"
+        ? "bg-amber-100 text-amber-700"
+        : tier === "xl"
+          ? "bg-rose-100 text-rose-600"
+          : "bg-stone-100 text-stone-500";
+
   const rowBg = todo.completed
     ? "bg-stone-50/60 border-stone-200/40"
     : todo.highPriority
@@ -158,7 +194,7 @@ export function TodoItem({
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
       tabIndex={0}
-      className={`rounded-lg border px-3 py-2 transition-all text-sm cursor-pointer ${rowBg} ${
+      className={`rounded-lg border transition-all text-sm cursor-pointer ${rowSize} ${accent} ${rowBg} ${
         snoozed ? "opacity-60" : ""
       } ${selected ? "ring-2 ring-lavender-300" : ""} ${
         completing ? "task-complete-flash" : ""
@@ -209,7 +245,7 @@ export function TodoItem({
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <span
-              className={`font-semibold ${
+              className={`font-semibold ${titleSize} ${
                 todo.completed
                   ? "line-through text-stone-400"
                   : "text-stone-800"
@@ -243,6 +279,14 @@ export function TodoItem({
                 {todo.linkedEventTitle}
               </span>
             )}
+            {todo.estimateMinutes ? (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${estimateChip}`}
+                title="Estimated effort"
+              >
+                {formatDuration(todo.estimateMinutes)}
+              </span>
+            ) : null}
             {snoozed && todo.snoozedUntil && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-stone-100 text-stone-500">
                 until {formatShortDate(todo.snoozedUntil)}

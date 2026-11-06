@@ -4,6 +4,8 @@ import { api } from "../../../convex/_generated/api";
 import { useLocalCache } from "../../hooks/useLocalCache";
 import { useGuest } from "../../hooks/useGuestMode";
 import { useGuestTodos } from "../../hooks/useGuestTodos";
+import { useTaskSpent } from "../../hooks/useTaskSpent";
+import { formatDuration } from "../../lib/duration";
 import { PanelCard } from "./PanelCard";
 import { TodoModal } from "../todos/TodoModal";
 import { TaskFocusModal } from "../todos/TaskFocusModal";
@@ -54,12 +56,15 @@ export function TasksPanel({
     ? (guestTodoData.todos as unknown as Todo[])
     : cached ?? undefined;
 
+  const spentByTask = useTaskSpent(todos);
+
   const completeTodo = useMutation(api.todos.complete);
   const setFocus = useMutation(api.todos.setFocus);
   const removeTodo = useMutation(api.todos.remove);
   const updateSubTasks = useMutation(api.todos.updateSubTasks);
   const updateProgress = useMutation(api.todos.updateProgress);
   const snoozeTodo = useMutation(api.todos.snooze);
+  const setEstimate = useMutation(api.todos.setEstimate);
   const { toasts, push } = useToast();
   const [showModal, setShowModal] = useState(false);
   const [editTodo, setEditTodo] = useState<Todo | null>(null);
@@ -119,6 +124,14 @@ export function TasksPanel({
       guestTodoData.snooze(todo._id, until);
     } else {
       snoozeTodo({ id: todo._id as Id<"todos">, until });
+    }
+  };
+
+  const handleEstimateChange = (todo: Todo, minutes: number | null) => {
+    if (isGuest) {
+      guestTodoData.update(todo._id, { estimateMinutes: minutes ?? undefined });
+    } else {
+      setEstimate({ id: todo._id as Id<"todos">, minutes });
     }
   };
 
@@ -296,6 +309,7 @@ export function TasksPanel({
         <TaskFocusModal
           todo={focusTodo}
           today={todayStr}
+          spent={spentByTask.get(focusTodo._id)}
           onClose={() => setFocusTodoId(null)}
           onToggleDone={() => {
             const wasCompleted = focusTodo.completed;
@@ -313,6 +327,7 @@ export function TasksPanel({
           onSnooze={(until) => handleSnooze(focusTodo, until)}
           onSubTaskToggle={(subTaskId) => handleSubTaskToggle(focusTodo, subTaskId)}
           onProgressChange={(value) => handleProgressChange(focusTodo, value)}
+          onEstimateChange={(minutes) => handleEstimateChange(focusTodo, minutes)}
           onStartPomo={() => startPomo(focusTodo)}
         />
       )}
@@ -331,6 +346,7 @@ export function TasksPanel({
               category: data.category as Category,
               subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
               manualProgress: data.manualProgress as number,
+              estimateMinutes: data.estimateMinutes as number,
             });
           } : undefined}
           onGuestUpdate={isGuest ? (id: string, data: Record<string, unknown>) => {
@@ -342,6 +358,7 @@ export function TasksPanel({
               category: data.category as Category,
               subTasks: data.subTasks as { id: string; title: string; done: boolean }[],
               manualProgress: data.manualProgress as number,
+              estimateMinutes: data.estimateMinutes as number,
             });
           } : undefined}
         />
@@ -431,6 +448,14 @@ function TodoGroup({
                     {todo.moduleName}
                   </span>
                 )}
+                {todo.estimateMinutes ? (
+                  <span
+                    className="flex-shrink-0 text-[9px] px-1 py-0.5 bg-stone-100 text-stone-500 rounded font-bold"
+                    title="Estimated effort"
+                  >
+                    {formatDuration(todo.estimateMinutes)}
+                  </span>
+                ) : null}
                 {due && (
                   <span
                     className={`text-[10px] font-bold flex-shrink-0 ${

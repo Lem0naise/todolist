@@ -10,6 +10,7 @@ type LinkedTodo = {
   category?: "lecture_catchup" | "project" | "other";
   subTasks?: { id: string; title: string; done: boolean }[];
   manualProgress?: number;
+  estimateMinutes?: number;
   linkedEventId?: Id<"timetableEvents">;
   moduleId?: Id<"modules">;
 };

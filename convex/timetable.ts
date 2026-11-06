@@ -101,6 +101,7 @@ export const getForDate = query({
             category: todo.category,
             subTasks: todo.subTasks,
             manualProgress: todo.manualProgress,
+            estimateMinutes: todo.estimateMinutes,
             linkedEventId: todo.linkedEventId,
             moduleId: todo.moduleId,
           };
