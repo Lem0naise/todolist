@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { addDaysLocal } from "../../lib/date";
-import { formatDuration, formatPomos, minutesToPomos } from "../../lib/duration";
-import { loadSettings } from "../pomo/usePomoData";
+import { formatDuration } from "../../lib/duration";
 import type { TaskSpent } from "../pomo/spent";
 import {
   CATEGORY_META,
@@ -92,7 +91,6 @@ export function TaskFocusModal({
   onEstimateChange?: (minutes: number | null) => void;
 }) {
   const [showSnooze, setShowSnooze] = useState(false);
-  const [workMinutes] = useState(() => loadSettings().work);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const category = effectiveCategory(todo);
@@ -231,7 +229,7 @@ export function TaskFocusModal({
                   </p>
                   <p className="text-sm font-bold text-stone-700">
                     {estimate
-                      ? `${formatDuration(estimate)} · ~${formatPomos(minutesToPomos(estimate, workMinutes))}`
+                      ? formatDuration(estimate)
                       : "No estimate yet"}
                   </p>
                 </div>
@@ -241,7 +239,7 @@ export function TaskFocusModal({
                   </p>
                   <p className="text-sm font-bold text-stone-700">
                     {spentMinutes > 0
-                      ? `${formatDuration(spentMinutes)} · ~${formatPomos(minutesToPomos(spentMinutes, workMinutes))}`
+                      ? formatDuration(spentMinutes)
                       : "Nothing yet"}
                   </p>
                 </div>

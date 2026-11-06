@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { formatDuration, formatPomos, minutesToPomos } from "../../lib/duration";
-import { loadSettings } from "../pomo/usePomoData";
+import { formatDuration } from "../../lib/duration";
 import { ESTIMATE_PRESETS } from "./utils";
 
 type Category = "lecture_catchup" | "project" | "other";
@@ -74,7 +73,6 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
     if (!minutes) return "";
     return String(Math.round((minutes / 60) * 100) / 100);
   });
-  const [workMinutes] = useState(() => loadSettings().work);
   const [linkedEventId, setLinkedEventId] = useState<string>(editTodo?.linkedEventId ?? "");
   const [moduleId, setModuleId] = useState<string>(editTodo?.moduleId ?? "");
   const [loading, setLoading] = useState(false);
@@ -309,7 +307,7 @@ export function TodoModal({ onClose, editTodo, isGuest, onGuestCreate, onGuestUp
               </label>
               {estimateMinutes !== undefined && (
                 <span className="text-[10px] font-bold text-stone-400">
-                  {`${formatDuration(estimateMinutes)} · ~${formatPomos(minutesToPomos(estimateMinutes, workMinutes))}`}
+                  {formatDuration(estimateMinutes)}
                 </span>
               )}
             </div>

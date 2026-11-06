@@ -7,7 +7,6 @@ import { useGuestTodos, type BulkEdit } from "../../hooks/useGuestTodos";
 import { useGroupCollapse, groupKey } from "../../hooks/useGroupCollapse";
 import { useTaskSpent } from "../../hooks/useTaskSpent";
 import { addDaysLocal, getTodayLocal, startOfWeekLocal } from "../../lib/date";
-import { formatDuration } from "../../lib/duration";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { TodoModal } from "./TodoModal";
 import { TaskFocusModal } from "./TaskFocusModal";
@@ -317,11 +316,6 @@ export function TodosView({
   const myDay = pendingAll
     .filter((t) => isFocusToday(t, today))
     .sort((a, b) => (a.focusOrder ?? 0) - (b.focusOrder ?? 0));
-  const myDayEstimate = myDay.reduce(
-    (sum, t) => sum + (t.estimateMinutes ?? 0),
-    0,
-  );
-  const myDayUnestimated = myDay.filter((t) => !t.estimateMinutes).length;
   const backlogSorted = sorted.filter((t) => !isFocusToday(t, today));
 
   const usedModuleIds = new Set<string>();
@@ -854,18 +848,6 @@ export function TodosView({
                   <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold font-sans bg-amber-100 text-amber-700">
                     {myDay.length}
                   </span>
-                  {myDayEstimate > 0 && (
-                    <span
-                      className="text-[10px] font-bold text-amber-600"
-                      title={
-                        myDayUnestimated > 0
-                          ? `${myDayUnestimated} task${myDayUnestimated !== 1 ? "s" : ""} without an estimate`
-                          : "Estimated effort for My Day"
-                      }
-                    >
-                      ~{formatDuration(myDayEstimate)}
-                    </span>
-                  )}
                   <button
                     onClick={clearMyDay}
                     className="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-600 hover:text-amber-700 px-2 py-1 rounded hover:bg-amber-100 transition-colors"
