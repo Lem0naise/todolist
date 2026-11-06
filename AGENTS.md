@@ -5,7 +5,7 @@ small, verify with `tsc` + `lint`, and follow the conventions below.
 
 ## 1. What this is
 
-A single-page study companion ("unitrack") built with **React 19 + Vite +
+A single-page study companion (**MyTerm**) built with **React 19 + Vite +
 TypeScript**, backed by **Convex** (serverless DB + functions) and
 **Convex Auth** (password). Features:
 
@@ -75,13 +75,14 @@ convex/                     Backend (deployed separately)
   modules.ts / moduleMatcher.ts  User modules + title→module pattern matching
   ignored.ts                Titles to hide and never generate todos for
   pomo.ts                   Pomodoro session CRUD + fixRounding
+  users.ts                  Current-user `viewer` query for the account page
   auth.ts / auth.config.ts / http.ts  Convex Auth (Password provider)
   _generated/               Codegen — never edit by hand
 
 src/
   main.tsx / App.tsx        Entry; App owns tab routing + the global pomo tick
   components/
-    Auth.tsx, Nav.tsx, SettingsView.tsx
+    Auth.tsx, Nav.tsx, SettingsView.tsx, AccountPanel.tsx, Brand.tsx
     home/                   CombinedView + SchedulePanel / TasksPanel / PanelCard
     todos/                  TodosView, TodoModal, TaskFocusModal, GroupSection,
                             TodoItem, SortableTodoItem, FilterBar,
@@ -91,6 +92,7 @@ src/
                             SplashScreen, FloatingPomo, usePomoData
   hooks/                    useGuestMode, useGuestTodos, useGuestPomoSessions,
                             useLocalCache, useGroupCollapse
+  lib/brand.ts              App name/description constants
   lib/date.ts               Local-timezone date helpers (USE THESE)
   index.css                 Tailwind v4 theme tokens
 ```
@@ -120,6 +122,19 @@ All tables are scoped by `userId`.
   `src/index.css` first and add the missing token rather than guessing.
 - Design language is soft/warm (cream backgrounds, rounded-xl/2xl, `font-hand`
   Caveat headings, `font-pomo` DynaPuff). Match surrounding markup.
+
+### Branding
+- The app is called **MyTerm**. Use `APP_NAME` from `src/lib/brand.ts` rather
+  than hard-coding the name in components.
+- Reusable brand pieces live in `src/components/Brand.tsx`: `BrandMark` (rose
+  rounded tile with a white "M"), `BrandWordmark` and `BrandLockup`.
+- `public/favicon.svg` is the matching standalone mark; keep it in sync with
+  `BrandMark` if the mark changes.
+- Do not add a tagline or slogan. Copy should stay functional.
+- **Legacy storage prefix:** localStorage keys still use `unitrack:*`
+  (`unitrack:guest:todos`, `unitrack:pomo:timer`, `unitrack:filter`, etc.).
+  This is intentional — renaming them would wipe guest data, timer state and
+  preferences. Keep the prefix unless you implement a migration.
 
 ### TypeScript
 - `strict`, `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`.

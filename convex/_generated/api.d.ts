@@ -19,6 +19,7 @@ import type * as occurrences from "../occurrences.js";
 import type * as pomo from "../pomo.js";
 import type * as timetable from "../timetable.js";
 import type * as todos from "../todos.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   pomo: typeof pomo;
   timetable: typeof timetable;
   todos: typeof todos;
+  users: typeof users;
 }>;
 
 /**

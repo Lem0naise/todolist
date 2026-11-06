@@ -53,7 +53,7 @@ export function CombinedView({
             {isGuest ? (
               <div className="bg-white rounded-2xl border border-cream-200 p-6 text-center space-y-3">
                 <p className="text-sm font-bold text-stone-500">Sign in to see your timetable</p>
-                <p className="text-xs text-stone-400">Import your uni schedule to track classes alongside your tasks.</p>
+                <p className="text-xs text-stone-400">Import your university timetable to track classes alongside your tasks.</p>
               </div>
             ) : (
               <SchedulePanel

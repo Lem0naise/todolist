@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { BrandLockup } from "./Brand";
 
 type Mode = "signin" | "signup";
 
@@ -32,12 +33,8 @@ export function Auth({ onContinueAsGuest }: { onContinueAsGuest: () => void }) {
   return (
     <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-rose-400 flex items-center justify-center mx-auto shadow-sm mb-4">
-            <span className="text-white text-2xl font-hand font-bold">u</span>
-          </div>
-          <h1 className="text-xl font-bold text-stone-700 font-hand text-3xl">uni</h1>
-          <p className="text-stone-400 mt-1 text-sm">your uni tracker</p>
+        <div className="flex justify-center mb-8">
+          <BrandLockup size="lg" />
         </div>
 
         <div className="bg-white rounded-2xl border border-cream-200 p-5 shadow-sm">

@@ -3,8 +3,10 @@ import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import { Auth } from "./components/Auth";
+import { BrandMark } from "./components/Brand";
 import { Nav } from "./components/Nav";
 import type { Tab } from "./components/Nav";
+import { APP_NAME } from "./lib/brand";
 import { CombinedView } from "./components/home/CombinedView";
 import { TodayView } from "./components/schedule/TodayView";
 import { TodosView } from "./components/todos/TodosView";
@@ -157,7 +159,7 @@ function MainApp({ isGuest, onNavigateToAuth }: { isGuest: boolean; onNavigateTo
         {isGuest && !guestBannerDismissed && (
           <div className="sm:pl-14 flex items-center justify-between px-4 py-2 bg-rose-50 border-b border-rose-100 text-xs font-bold text-rose-500 flex-shrink-0">
             <span>
-              Guest mode — data stored in this browser only.
+              {APP_NAME} guest mode — data stored in this browser only.
               <span className="hidden sm:inline"> Sign in to sync and import your timetable.</span>
             </span>
             <div className="flex items-center gap-2">
@@ -231,9 +233,20 @@ export function App() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const [isGuest, setIsGuest] = useState(false);
 
+  useEffect(() => {
+    if (!isAuthenticated && !isGuest) {
+      document.title = APP_NAME;
+    }
+  }, [isAuthenticated, isGuest]);
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
+      <div
+        role="status"
+        className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4"
+      >
+        <BrandMark className="w-12 h-12" />
+        <span className="sr-only">Loading {APP_NAME}</span>
         <div className="w-6 h-6 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );

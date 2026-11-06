@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useGuest } from "../hooks/useGuestMode";
+import { AccountPanel, GuestAccountPanel } from "./AccountPanel";
 import { getSplashSoundEnabled, toggleSplashSound } from "./pomo/SplashScreen";
 import { getTodayLocal } from "../lib/date";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -35,20 +36,7 @@ export function SettingsView({ onSignOut, onNavigateToAuth }: { onSignOut: () =>
     return (
       <div className="p-3 max-w-2xl mx-auto pb-24">
         <h2 className="text-2xl font-bold text-stone-700 font-hand text-4xl leading-tight mb-6">settings</h2>
-        <div className="bg-white rounded-2xl border border-cream-200 p-6 text-center space-y-4">
-          <p className="text-sm text-stone-500">
-            Sign in to access timetable import, module management, and full settings.
-          </p>
-          <p className="text-xs text-stone-400">
-            Your guest data is stored in this browser only.
-          </p>
-          <button
-            onClick={onNavigateToAuth}
-            className="px-5 py-2 bg-rose-400 hover:bg-rose-500 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
-          >
-            Sign in
-          </button>
-        </div>
+        <GuestAccountPanel onNavigateToAuth={onNavigateToAuth} />
       </div>
     );
   }
@@ -107,7 +95,7 @@ function SettingsAuth({ onSignOut }: { onSignOut: () => void }) {
       ) : activeTab === "sound" ? (
         <SoundSettings />
       ) : (
-        <AccountSettings onSignOut={onSignOut} />
+        <AccountPanel onSignOut={onSignOut} />
       )}
     </div>
   );
@@ -310,7 +298,7 @@ function TimetableSettings() {
         <ul className="space-y-1 text-xs text-rose-500">
           <li><strong>Outlook/Office 365:</strong> Calendar → Share → Get a link → View only</li>
           <li><strong>Google Calendar:</strong> Settings → your calendar → Integrate → Secret address in iCal format</li>
-          <li><strong>Timetable systems:</strong> Look for "Export" or "Subscribe" in your uni's timetable portal</li>
+          <li><strong>Timetable systems:</strong> Look for "Export" or "Subscribe" in your university's timetable portal</li>
         </ul>
       </section>
     </div>
@@ -357,7 +345,7 @@ function IcsImportForm({ onDone }: { onDone: () => void }) {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Uni Timetable"
+          placeholder="e.g. My Timetable"
           className="w-full px-3 py-2 text-sm border border-cream-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
         />
       </div>
@@ -855,24 +843,6 @@ function SoundSettings() {
           </button>
         )}
       </section>
-    </div>
-  );
-}
-
-function AccountSettings({ onSignOut }: { onSignOut: () => void }) {
-  return (
-    <div className="space-y-4">
-      <div className="bg-cream-50 rounded-xl border border-cream-200 p-4">
-        <p className="text-sm text-stone-500 mb-4">
-          Manage your UniTrack account.
-        </p>
-        <button
-          onClick={onSignOut}
-          className="w-full py-2 text-sm font-medium text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
-        >
-          Sign out
-        </button>
-      </div>
     </div>
   );
 }

@@ -1,6 +1,17 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { BrandMark, BrandWordmark } from "./Brand";
+import { APP_NAME } from "../lib/brand";
 
 export type Tab = "combined" | "today" | "todos" | "pomo" | "settings";
+
+const TAB_LABELS: Record<Tab, string> = {
+  combined: "Home",
+  today: "Schedule",
+  todos: "Tasks",
+  pomo: "Pomo",
+  settings: "Settings",
+};
 
 interface Props {
   activeTab: Tab;
@@ -10,11 +21,17 @@ interface Props {
 }
 
 export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }: Props) {
+  useEffect(() => {
+    document.title =
+      activeTab === "combined"
+        ? APP_NAME
+        : `${TAB_LABELS[activeTab]} · ${APP_NAME}`;
+  }, [activeTab]);
 
   const tabs: { id: Tab; label: string; icon: ReactNode; shortcut: string }[] = [
     {
       id: "combined",
-      label: "Home",
+      label: TAB_LABELS.combined,
       shortcut: "1",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -24,7 +41,7 @@ export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }
     },
     {
       id: "today",
-      label: "Schedule",
+      label: TAB_LABELS.today,
       shortcut: "2",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -34,7 +51,7 @@ export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }
     },
     {
       id: "todos",
-      label: "Tasks",
+      label: TAB_LABELS.todos,
       shortcut: "3",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -44,7 +61,7 @@ export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }
     },
     {
       id: "pomo",
-      label: "Pomo",
+      label: TAB_LABELS.pomo,
       shortcut: "4",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -54,7 +71,7 @@ export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }
     },
     {
       id: "settings",
-      label: "Settings",
+      label: TAB_LABELS.settings,
       shortcut: "",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -67,15 +84,36 @@ export function Nav({ activeTab, onTabChange, todoBadge, hideBottomNav = false }
 
   return (
     <>
+      <header
+        className={`sm:hidden flex items-center px-4 py-2.5 bg-cream border-b border-cream-200 flex-shrink-0 ${
+          hideBottomNav ? "hidden" : ""
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => onTabChange("combined")}
+          title={APP_NAME}
+          aria-label={`${APP_NAME} home`}
+          className="flex items-center gap-2"
+        >
+          <BrandMark className="w-7 h-7" />
+          <BrandWordmark className="text-xl" />
+        </button>
+      </header>
+
       <nav className="group hidden sm:flex flex-col border-r border-cream-200 bg-cream pt-4 gap-1 fixed left-0 top-0 bottom-0 z-30 w-14 hover:w-52 transition-all duration-200 overflow-hidden">
-        <div className="flex items-center gap-2.5 px-3 mb-4 flex-shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-rose-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <span className="text-white text-base font-hand font-bold">u</span>
-          </div>
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-base font-bold text-stone-700 truncate whitespace-nowrap font-hand text-2xl">
-            uni
+        <button
+          type="button"
+          onClick={() => onTabChange("combined")}
+          title={APP_NAME}
+          aria-label={`${APP_NAME} home`}
+          className="flex items-center gap-2.5 px-3 mb-4 flex-shrink-0 text-left"
+        >
+          <BrandMark className="w-8 h-8 flex-shrink-0" />
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap">
+            <BrandWordmark className="text-2xl" />
           </span>
-        </div>
+        </button>
 
         {tabs.map((tab) => (
           <button
